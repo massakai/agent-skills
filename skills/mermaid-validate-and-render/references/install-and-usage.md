@@ -51,6 +51,31 @@ npm install
 - Node.js 20 以上
 - npm
 
+### `npm warn allow-scripts` が出る場合
+
+npm の設定によっては、`npm install` 時に `puppeteer` の install script が未承認として警告されることがあります。
+
+例:
+
+```text
+npm warn allow-scripts 1 package has install scripts not yet covered by allowScripts:
+npm warn allow-scripts   puppeteer@... (postinstall: node install.mjs)
+```
+
+この場合は `puppeteer` を承認してください。
+
+```sh
+npm approve-scripts puppeteer
+```
+
+保留中の script をまとめて確認したい場合:
+
+```sh
+npm approve-scripts --allow-scripts-pending
+```
+
+承認後、必要なら `npm install` を再実行します。`validate_mermaid.mjs` と `render_mermaid.sh` が成功すれば準備完了です。
+
 ### インストール確認
 
 次を実行します。
