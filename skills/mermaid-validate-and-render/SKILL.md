@@ -1,6 +1,6 @@
 ---
 name: mermaid-validate-and-render
-description: `parse -> render -> 修正` のループを必須にして Mermaid 図を安全に作成・修正・検証する。Mermaid 図の新規作成、既存 Mermaid の修正、文法エラー対応、描画確認つきの検証が必要なときに使う。
+description: "`parse -> render -> 修正` のループを必須にして Mermaid 図を安全に作成・修正・検証する。Mermaid 図の新規作成、既存 Mermaid の修正、文法エラー対応、描画確認つきの検証が必要なときに使う。"
 ---
 
 # Mermaid Validate And Render
