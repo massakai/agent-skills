@@ -1,0 +1,7 @@
+interface:
+  display_name: "Repo Orientation"
+  short_description: "初見のリポジトリ構成と重要ファイルを素早く整理する"
+  default_prompt: "$repo-orientation を使って、このリポジトリの構成、重要ファイル、主要コマンドを短く整理してください。"
+
+policy:
+  allow_implicit_invocation: true
