@@ -105,6 +105,21 @@ Codex からスキルが認識されることを確認するには、`$mermaid-v
 
 ### サンドボックス環境や CI での render
 
+`--no-sandbox` は常に必要なオプションではありません。Mermaid スキルだから必須なのではなく、実行環境側で Chromium / Puppeteer の sandbox 起動が失敗する場合だけ必要になります。
+
+判断手順:
+
+1. まずは `--no-sandbox` なしで `validate_mermaid.mjs` と `render_mermaid.sh` を実行する
+2. Chrome / Chromium の起動失敗が出たら、ログに sandbox 起因のエラーがないか確認する
+3. sandbox 起因の失敗であれば、Puppeteer 設定ファイルで `--no-sandbox` を渡して再実行する
+
+必要になりやすい環境の例:
+
+- CI
+- コンテナ
+- 権限制約の強いリモート実行環境
+- sandbox 制約のあるエージェント実行環境
+
 Chromium 起動に `--no-sandbox` が必要な環境では、Puppeteer 設定ファイルを作成してスクリプトへ渡します。
 
 ```json
