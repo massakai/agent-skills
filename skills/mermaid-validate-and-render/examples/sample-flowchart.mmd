@@ -1,0 +1,4 @@
+flowchart TD
+    User["User submits request"] --> Validate["Validate request"]
+    Validate -->|ok| Process["Process request"]
+    Validate -->|error| Reject["Return validation error"]

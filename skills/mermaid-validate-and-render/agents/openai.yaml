@@ -1,0 +1,7 @@
+interface:
+  display_name: "Mermaid Validate & Render"
+  short_description: "Mermaid を生成・修正し、parse と render を必ず検証する"
+  default_prompt: "$mermaid-validate-and-render を使って Mermaid を作成・修正・検証し、parse と render の両方が成功したものだけを返してください。"
+
+policy:
+  allow_implicit_invocation: true
