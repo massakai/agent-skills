@@ -51,6 +51,8 @@ npm install
 - Node.js 20 以上
 - npm
 
+Apple Silicon の macOS では、arm64 版の Node.js を推奨します。x64 版 Node.js でも動作する場合がありますが、Puppeteer が Chrome を Rosetta 経由で起動し、性能警告が出ることがあります。
+
 ### `npm warn allow-scripts` が出る場合
 
 npm の設定によっては、`npm install` 時に `puppeteer` の install script が未承認として警告されることがあります。
@@ -90,6 +92,14 @@ scripts/render_mermaid.sh examples/sample-flowchart.mmd /tmp/sample-flowchart.sv
 
 - parser 検証が成功終了する
 - render が成功終了し、SVG が出力される
+
+Apple Silicon で x64 版 Node.js を使っている場合、次のような性能警告が出ることがあります。
+
+- `Launching Chrome on Mac Silicon (arm64) from an x64 Node installation...`
+
+この警告は、`OK: parse succeeded` や `OK: render succeeded` が出ている限り、検証失敗を意味しません。処理は成功しています。
+
+警告を解消したい場合は、arm64 版の Node.js を利用してください。
 
 Codex からスキルが認識されることを確認するには、`$mermaid-validate-and-render` を明示したプロンプトを開始します。起動時にスキル一覧をキャッシュする環境では、`npx skills add` 実行後にセッション再起動が必要な場合があります。
 
