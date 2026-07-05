@@ -1,0 +1,7 @@
+interface:
+  display_name: "Worktree 状態確認"
+  short_description: "git worktree を削除可否ごとに安全に分類する"
+  default_prompt: "$worktree-status-check を使って、local の git worktree を safe_to_remove、removal_candidate_with_leftovers、in_progress に分類してください。"
+
+policy:
+  allow_implicit_invocation: true
