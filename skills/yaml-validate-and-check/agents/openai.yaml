@@ -1,0 +1,7 @@
+interface:
+  display_name: "YAML Validate & Check"
+  short_description: "YAML を生成・修正し、parse と shape check を必ず検証する"
+  default_prompt: "$yaml-validate-and-check を使って YAML を作成・修正・検証し、parse と shape check の両方が成功したものだけを返してください。"
+
+policy:
+  allow_implicit_invocation: true

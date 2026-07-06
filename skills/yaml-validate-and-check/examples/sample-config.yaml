@@ -1,0 +1,8 @@
+app:
+  name: sample
+  port: 8080
+  features:
+    - search
+    - export
+logging:
+  level: info
