@@ -1,0 +1,7 @@
+interface:
+  display_name: "Blog Idea Memo"
+  short_description: "短いブログ案を既存メモへ整理し、次の着手候補を選定する"
+  default_prompt: "$blog-idea-memo を使って、このブログ案を既存のアイデアメモへ簡潔に追加してください。"
+
+policy:
+  allow_implicit_invocation: true
