@@ -8,7 +8,7 @@ GitHubリポジトリからスキルをインストールする。
 npx skills add massakai/agent-skills --skill mermaid-validate-and-render
 ```
 
-必要なら `-g` や `--agent <agent-name>` を追加する。インストール先のスキルディレクトリで `npm ci` を実行し、lockfileの依存を用意する。Node.jsは依存パッケージのenginesを満たす版を使用する（現行lockfileはNode.js 22.12以上）。Chromiumと日本語フォントも必要。Puppeteerのインストールスクリプトがローカルのパッケージ管理ポリシーで保留された場合は、そのポリシーに従って依存のセットアップを完了する。
+必要なら `-g` や `--agent <agent-name>` を追加する。インストール先のスキルディレクトリで `npm ci` を実行し、lockfileの依存を用意する。Node.jsは依存パッケージのenginesを満たす版を使用する（現行lockfileはNode.js 22.12以上）。Puppeteer用ブラウザと日本語フォントも必要。
 
 導入前に対象スキルの一覧だけ確認する場合は `npx skills add massakai/agent-skills --list` を使う。依存を準備する場所はリポジトリのルートではなく、インストールされたスキルのディレクトリ。
 
@@ -17,7 +17,9 @@ cd <インストールされたmermaid-validate-and-renderディレクトリ>
 npm ci
 ```
 
-`allow-scripts` などの警告が出た場合は、保留対象がPuppeteerのブラウザ取得用スクリプトかを確認し、使用中のパッケージ管理ツールの手順で対象を限定して扱う。インストールスクリプトの許可と、検証時のブラウザ起動権限は別であり、一方の許可だけで両方が解決するとは限らない。
+`npm ci`でインストールスクリプトの実行が無効になっている場合、Puppeteer用ブラウザは自動ダウンロードされない。例えば `ignore-scripts=true` ではスクリプトがスキップされる。`allowScripts` による制御もnpmのバージョンと設定に依存し、警告付きでの実行・スキップ、またはインストールエラーとなる場合がある。詳細は [npm ciの設定](https://docs.npmjs.com/cli/v11/commands/npm-ci/) を参照する。
+
+ブラウザが見つからないエラーが出た場合は、npmの設定と [Puppeteerの導入手順](https://pptr.dev/guides/installation) を確認する。パッケージの導入が成功していても、ブラウザが取得済みとは限らない。インストールスクリプトの実行設定と、検証時のブラウザ起動権限は別なので、それぞれのエラー原因に応じて対処する。
 
 ```sh
 node scripts/batch_mermaid.mjs --format png,svg examples/sample-document.md examples/sample-flowchart.mmd
