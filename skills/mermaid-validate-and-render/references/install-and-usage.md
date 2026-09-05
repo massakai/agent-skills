@@ -2,7 +2,7 @@
 
 ## 導入と更新
 
-公開された管理元から対象スキルを導入する。未公開worktreeの変更はこの操作には含まれない。
+GitHubリポジトリからスキルをインストールする。
 
 ```sh
 npx skills add massakai/agent-skills --skill mermaid-validate-and-render
@@ -25,7 +25,7 @@ node scripts/batch_mermaid.mjs --format png,svg examples/sample-document.md exam
 
 期待結果は、終了コード0、`mode: parse-render`、全図のparse/render成功、および生成PNG/SVGの存在。生成PNGを開いて確認する。警告文の有無だけで成功・失敗を判断せず、各工程の結果を確認する。Apple Siliconでアーキテクチャの警告が出た場合は、Node.jsとブラウザのアーキテクチャを確認する。
 
-インストール済みスキルの更新や承認設定変更は、スキル管理元の編集とは別操作。更新後は依存を揃え、必要なら利用エージェントのセッションを再起動する。認識確認には `$mermaid-validate-and-render を使って、会員登録フローのflowchartを作って` のようにスキル名を明示する。
+スキルの更新後もインストール先で `npm ci` を実行し、必要なら利用エージェントのセッションを再起動する。認識確認には `$mermaid-validate-and-render を使って、会員登録フローのflowchartを作って` のようにスキル名を明示する。
 
 ## 作成・修正の使い方
 
