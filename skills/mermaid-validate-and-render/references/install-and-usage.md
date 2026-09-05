@@ -10,11 +10,38 @@ npx skills add massakai/agent-skills --skill mermaid-validate-and-render
 
 必要なら `-g` や `--agent <agent-name>` を追加する。インストール先のスキルディレクトリで `npm ci` を実行し、lockfileの依存を用意する。Node.jsは依存パッケージのenginesを満たす版を使用する（現行lockfileはNode.js 22.12以上）。Chromiumと日本語フォントも必要。Puppeteerのインストールスクリプトがローカルのパッケージ管理ポリシーで保留された場合は、そのポリシーに従って依存のセットアップを完了する。
 
+導入前に対象スキルの一覧だけ確認する場合は `npx skills add massakai/agent-skills --list` を使う。依存を準備する場所はリポジトリのルートではなく、インストールされたスキルのディレクトリ。
+
+```sh
+cd <インストールされたmermaid-validate-and-renderディレクトリ>
+npm ci
+```
+
+`allow-scripts` などの警告が出た場合は、保留対象がPuppeteerのブラウザ取得用スクリプトかを確認し、使用中のパッケージ管理ツールの手順で対象を限定して扱う。インストールスクリプトの許可と、検証時のブラウザ起動権限は別であり、一方の許可だけで両方が解決するとは限らない。
+
 ```sh
 node scripts/batch_mermaid.mjs --format png,svg examples/sample-document.md examples/sample-flowchart.mmd
 ```
 
-生成PNGを開いて確認する。インストール済みスキルの更新や承認設定変更は、スキル管理元の編集とは別操作。更新後は依存を揃え、必要なら利用エージェントのセッションを再起動する。
+期待結果は、終了コード0、`mode: parse-render`、全図のparse/render成功、および生成PNG/SVGの存在。生成PNGを開いて確認する。警告文の有無だけで成功・失敗を判断せず、各工程の結果を確認する。Apple Siliconでアーキテクチャの警告が出た場合は、Node.jsとブラウザのアーキテクチャを確認する。
+
+インストール済みスキルの更新や承認設定変更は、スキル管理元の編集とは別操作。更新後は依存を揃え、必要なら利用エージェントのセッションを再起動する。認識確認には `$mermaid-validate-and-render を使って、会員登録フローのflowchartを作って` のようにスキル名を明示する。
+
+## 作成・修正の使い方
+
+既存ファイルの一括チェックだけでなく、次の依頼も対象となる。
+
+- 新規作成: 「会員登録フローのflowchartを作って」。要件に合う図種別と最小構成を決め、Mermaidを作成して検証する。
+- 修正: 「このrenderに失敗するMermaidを修正して」。図の問題と環境障害を切り分け、図を直したらparseから再検証する。
+- 共有前の確認: 「このsequenceDiagramをコミット前に検証して」。parse/renderと目視確認を行い、未完了を成功として報告しない。
+
+単一.mmdも同じ専用コマンドで扱える。
+
+```sh
+node scripts/batch_mermaid.mjs --format png,svg input.mmd
+```
+
+作成・修正から完了までのループと出力条件は [SKILL.md](../SKILL.md) に従う。失敗が続く場合の最小例への戻し方は [common-errors.md](common-errors.md) を参照する。環境障害を解消できない間は未完了と報告し、構文修正や同じ再実行を無条件に繰り返さない。
 
 ## 一括コマンド
 
