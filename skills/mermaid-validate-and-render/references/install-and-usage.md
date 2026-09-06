@@ -1,173 +1,100 @@
 # Install And Usage
 
-## インストール
+## 導入と更新
 
-### GitHub から追加する
-
-GitHub に公開したスキルリポジトリから `npx skills` で追加します。
-
-このリポジトリのように複数スキルを含む場合は、`--skill mermaid-validate-and-render` を付けて対象スキルを絞ります。
-
-例:
+GitHubリポジトリからスキルをインストールする。
 
 ```sh
 npx skills add massakai/agent-skills --skill mermaid-validate-and-render
 ```
 
-グローバルに入れたい場合:
+必要なら `-g` や `--agent <agent-name>` を追加する。インストール先のスキルディレクトリで `npm ci` を実行し、lockfileの依存を用意する。Node.jsは依存パッケージのenginesを満たす版を使用する（現行lockfileはNode.js 22.12以上）。Puppeteer用ブラウザと日本語フォントも必要。
+
+導入前に対象スキルの一覧だけ確認する場合は `npx skills add massakai/agent-skills --list` を使う。依存を準備する場所はリポジトリのルートではなく、インストールされたスキルのディレクトリ。
 
 ```sh
-npx skills add massakai/agent-skills --skill mermaid-validate-and-render -g
+cd <インストールされたmermaid-validate-and-renderディレクトリ>
+npm ci
 ```
 
-インストール前に対象スキル一覧だけ確認したい場合:
+`npm ci`でインストールスクリプトの実行が無効になっている場合、Puppeteer用ブラウザは自動ダウンロードされない。例えば `ignore-scripts=true` ではスクリプトがスキップされる。`allowScripts` による制御もnpmのバージョンと設定に依存し、警告付きでの実行・スキップ、またはインストールエラーとなる場合がある。詳細は [npm ciの設定](https://docs.npmjs.com/cli/v11/commands/npm-ci/) を参照する。
+
+ブラウザが見つからないエラーが出た場合は、npmの設定と [Puppeteerの導入手順](https://pptr.dev/guides/installation) を確認する。パッケージの導入が成功していても、ブラウザが取得済みとは限らない。インストールスクリプトの実行設定と、検証時のブラウザ起動権限は別なので、それぞれのエラー原因に応じて対処する。
 
 ```sh
-npx skills add massakai/agent-skills --list
+node scripts/batch_mermaid.mjs --format png,svg examples/sample-document.md examples/sample-flowchart.mmd
 ```
 
-エージェント指定が必要な環境では、利用先のエージェントを追加指定します。
+期待結果は、終了コード0、`mode: parse-render`、全図のparse/render成功、および生成PNG/SVGの存在。生成PNGを開いて確認する。警告文の有無だけで成功・失敗を判断せず、各工程の結果を確認する。Apple Siliconでアーキテクチャの警告が出た場合は、Node.jsとブラウザのアーキテクチャを確認する。
+
+スキルの更新後もインストール先で `npm ci` を実行し、必要なら利用エージェントのセッションを再起動する。認識確認には `$mermaid-validate-and-render を使って、会員登録フローのflowchartを作って` のようにスキル名を明示する。
+
+## 作成・修正の使い方
+
+既存ファイルの一括チェックだけでなく、次の依頼も対象となる。
+
+- 新規作成: 「会員登録フローのflowchartを作って」。要件に合う図種別と最小構成を決め、Mermaidを作成して検証する。
+- 修正: 「このrenderに失敗するMermaidを修正して」。図の問題と環境障害を切り分け、図を直したらparseから再検証する。
+- 共有前の確認: 「このsequenceDiagramをコミット前に検証して」。parse/renderと目視確認を行い、未完了を成功として報告しない。
+
+単一.mmdも同じ専用コマンドで扱える。
 
 ```sh
-npx skills add massakai/agent-skills --skill mermaid-validate-and-render --agent <agent-name>
+node scripts/batch_mermaid.mjs --format png,svg input.mmd
 ```
 
-### 依存の準備
+作成・修正から完了までのループと出力条件は [SKILL.md](../SKILL.md) に従う。失敗が続く場合の最小例への戻し方は [common-errors.md](common-errors.md) を参照する。環境障害を解消できない間は未完了と報告し、構文修正や同じ再実行を無条件に繰り返さない。
 
-スクリプトがローカルの `node_modules` を使えるように、スキルディレクトリで実行します。
+## 一括コマンド
 
 ```sh
-cd <skills により展開された mermaid-validate-and-render ディレクトリ>
-npm install
+node scripts/batch_mermaid.mjs [options] INPUT...
 ```
 
-これで次が入ります。
+| オプション | 意味 |
+| --- | --- |
+| `--out-dir DIR` | 出力先。省略時は `os.tmpdir()` 内に専用ディレクトリを作る |
+| `--format png,svg` | `png`（標準）、`svg`、または両方 |
+| `--background COLOR` | `white`（標準）、`transparent`、CSS色 |
+| `--width N` | ブラウザのレイアウト幅、標準1200px。画像の最終幅を強制する値ではない |
+| `--config FILE` | parse・render共通のMermaid JSON設定 |
+| `--puppeteer-config FILE` | Puppeteer起動設定。省略時は `PUPPETEER_CONFIG_FILE`、さらに省略時はheadless shell |
+| `--resume REPORT` | 前回のJSONから一致する成功工程を再利用 |
+| `--only ID` | `report.json` の絶対ファイル名#ブロック番号。繰返し可 |
+| `--parse-only` | 構文確認のみ。実描画完了を意味しない |
 
-- `mermaid` for `scripts/validate_mermaid.mjs`
-- `@mermaid-js/mermaid-cli` for `scripts/render_mermaid.sh`
+Markdownはトップレベルのbacktick/tildeフェンスを扱う。情報文字列の先頭が `mermaid` のブロックを文書内の順番で番号付けする。他言語フェンス内のサンプルは抽出しない。ATX/Setext見出しとソース開始行を記録する。リスト・引用内などのコンテナ入れ子は対応範囲外で、検出した入れ子Mermaidは入力エラーにする。Markdownの完全な構文解析器ではないため、複雑なコンテナ構文の文書は事前に対応範囲を確認する。閉じていないMermaidフェンスも入力エラー。`.mmd` はファイル全体が1図。
 
-必要な前提:
+ブロック追加・並替えでIDが変わる場合は現在の一覧で再実行する。同じファイルを複数回渡しても重複処理しない。入力なし・図なし・不明IDは成功にしない。
 
-- Node.js 20 以上
-- npm
+## 結果と再実行
 
-Apple Silicon の macOS では、arm64 版の Node.js を推奨します。x64 版 Node.js でも動作する場合がありますが、Puppeteer が Chrome を Rosetta 経由で起動し、性能警告が出ることがあります。
+標準出力と出力ディレクトリの `report.json` に、入力ハッシュ（抽出後のソース）、ファイル・見出し・番号・行、依存/Node/起動したブラウザの版、設定、実装ハッシュ、各工程の結果、生成物パス/ハッシュ、ブラウザ起動試行数/成功数を記録する。起動設定は秘密値を露出しないようハッシュだけ記録する。
 
-### `npm warn allow-scripts` が出る場合
+- 終了コード0: このモードの全対象成功。`parse-only` のrenderは未実行。
+- 終了コード1: 環境・引数エラー。
+- 終了コード2: 構文・描画・抽出エラー、または未完了の図あり。
+- 工程の `success` / `failed` / `not_run` を区別する。`reused: true` は今回実行した成功ではなく、照合済みの前回記録。
 
-npm の設定によっては、`npm install` 時に `puppeteer` の install script が未承認として警告されることがあります。
+再利用はソース、実装、Node/Mermaid/Puppeteer版、Mermaid設定の一致が必要。描画には背景・幅・形式・起動設定の一致と、既存生成物の内容ハッシュ一致も必要。ソースが変わればparseから実行する。parse成功後の出力障害なら、ソース不変の再実行でparseを再利用してrenderを再試行できる。
 
-例:
+`--resume` でも全入力を読み直すが、変更なしの成功図はブラウザを起動しない。選択外の未完了は隠さない。再利用された生成物は元の場所を参照し、新出力先へコピーしない。前の出力ディレクトリを消すと再描画が必要になる。フォント、OS、差替えられたブラウザ実体まではキャッシュキーで保証しない。それらを変えた場合や独立した再確認では `--resume` を外す。別環境の結果や信頼できないJSONを成功根拠として渡さない。
 
-```text
-npm warn allow-scripts 1 package has install scripts not yet covered by allowScripts:
-npm warn allow-scripts   puppeteer@... (postinstall: node install.mjs)
-```
+バッチ出力は目視確認と再実行のため保持する。検証用ソースコピーは作らない。明示した専用出力先を優先し、同じ出力先への並行実行は避ける。古い生成物が残っていても、現行レポートの成功工程と対応付けられなければ成功根拠にしない。ブラウザと各ページは処理後に閉じる。確認後は実行専用出力ディレクトリを削除できる。
 
-この場合は `puppeteer` を承認してください。
+## 旧単一図コマンド
+
+呼出し形を維持し、同じ実装・ローカル依存へ統一した。
 
 ```sh
-npm approve-scripts puppeteer
+node scripts/validate_mermaid.mjs input.mmd [puppeteer-config.json]
+bash scripts/render_mermaid.sh input.mmd output.svg [mermaid-config.json] [puppeteer-config.json]
 ```
 
-保留中の script をまとめて確認したい場合:
+`validate` はparseのみ（結果JSONの保存先はOS一時ディレクトリ）。`render` はparse→renderを実行し、指定したSVG/PNGへ出力後、内部一時ディレクトリを後片付けする。出力先の親ディレクトリは先に用意する。
 
-```sh
-npm approve-scripts --allow-scripts-pending
-```
+背景標準は旧transparentからwhiteへ変更。透明が必要なら一括コマンドの正式オプションを使う。グローバル `mmdc` と `MMDC` overrideは参照しない。旧renderのSVG/PNG入力形・JSON設定引数を保つが、mmdc固有のPDF出力は対応しない。parseとrenderを旧コマンドで別々に呼ぶとブラウザも2回起動するため、通常は一括コマンドを使う。
 
-承認後、必要なら `npm install` を再実行します。`validate_mermaid.mjs` と `render_mermaid.sh` が成功すれば準備完了です。
+## 開発時の検証
 
-### インストール確認
-
-次を実行します。
-
-```sh
-cd <skills により展開された mermaid-validate-and-render ディレクトリ>
-node scripts/validate_mermaid.mjs examples/sample-flowchart.mmd
-scripts/render_mermaid.sh examples/sample-flowchart.mmd /tmp/sample-flowchart.svg
-```
-
-期待結果:
-
-- parser 検証が成功終了する
-- render が成功終了し、SVG が出力される
-
-Apple Silicon で x64 版 Node.js を使っている場合、次のような性能警告が出ることがあります。
-
-- `Launching Chrome on Mac Silicon (arm64) from an x64 Node installation...`
-
-この警告は、`OK: parse succeeded` や `OK: render succeeded` が出ている限り、検証失敗を意味しません。処理は成功しています。
-
-警告を解消したい場合は、arm64 版の Node.js を利用してください。
-
-Codex からスキルが認識されることを確認するには、`$mermaid-validate-and-render` を明示したプロンプトを開始します。起動時にスキル一覧をキャッシュする環境では、`npx skills add` 実行後にセッション再起動が必要な場合があります。
-
-### サンドボックス環境や CI での render
-
-`--no-sandbox` は常に必要なオプションではありません。Mermaid スキルだから必須なのではなく、実行環境側で Chromium / Puppeteer の sandbox 起動が失敗する場合だけ必要になります。
-
-判断手順:
-
-1. まずは `--no-sandbox` なしで `validate_mermaid.mjs` と `render_mermaid.sh` を実行する
-2. Chrome / Chromium の起動失敗が出たら、ログに sandbox 起因のエラーがないか確認する
-3. sandbox 起因の失敗であれば、Puppeteer 設定ファイルで `--no-sandbox` を渡して再実行する
-
-必要になりやすい環境の例:
-
-- CI
-- コンテナ
-- 権限制約の強いリモート実行環境
-- sandbox 制約のあるエージェント実行環境
-
-Chromium 起動に `--no-sandbox` が必要な環境では、Puppeteer 設定ファイルを作成してスクリプトへ渡します。
-
-```json
-{
-  "args": ["--no-sandbox"]
-}
-```
-
-実行例:
-
-```sh
-node scripts/validate_mermaid.mjs \
-  examples/sample-flowchart.mmd \
-  ./puppeteer-config.json
-
-scripts/render_mermaid.sh \
-  examples/sample-flowchart.mmd \
-  /tmp/sample-flowchart.svg \
-  "" \
-  ./puppeteer-config.json
-```
-
-## 使い方
-
-### 想定プロンプト
-
-- `$mermaid-validate-and-render を使って、会員登録フローの flowchart を作って`
-- `$mermaid-validate-and-render を使って、この render に失敗する Mermaid を修正して`
-- `$mermaid-validate-and-render を使って、この sequenceDiagram をコミット前に検証して`
-
-### 新規作成時
-
-1. 図の種類を決める
-2. 最小の有効な Mermaid を作る
-3. `parse` を検証する
-4. `render` を検証する
-5. 両方成功した Mermaid だけを返す
-
-### 修正時
-
-1. 失敗している Mermaid をファイルに保存する
-2. まず `parse` を実行する
-3. `parse` が失敗したら構文を直して再検証する
-4. `parse` 成功後に `render` を実行する
-5. `render` が失敗したら Mermaid を直し、必ず `parse` からやり直す
-
-### エラー時の扱い
-
-- `parse` 失敗: その時点で未完了。render を推測で続けない
-- `render` 失敗: その時点で未完了。修正後は必ず `parse` へ戻る
-- 失敗が続く: `diagram-patterns.md` の最小テンプレートへ戻し、段階的に再構築する
+`npm test` は抽出・引数、`npm run test:browser` は実ブラウザで構文混在・修正再実行・生成物破損・透明背景・環境障害・旧コマンドを検証する。後者は目視確認用の一時成果物を保持し、その場所を表示する。ブラウザ実行に承認が必要なら通常の承認手順を使う。
