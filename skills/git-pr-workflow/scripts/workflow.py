@@ -44,8 +44,10 @@ def fingerprint(root):
                 digest.update(str(p.readlink()).encode())
             elif p.is_file():
                 digest.update(p.read_bytes())
+    # Keep complete state in the digest, but do not flood agents with cache files.
+    display = g("status", "--porcelain=v1", "-z", "--untracked-files=normal", "--ignored").replace("\0", "\n").rstrip()
     return {"head": head, "branch": branch, "state": digest.hexdigest(),
-            "status": status.replace("\0", "\n").rstrip()}
+            "status": display[:4000], "status_truncated": len(display) > 4000}
 
 
 @contextmanager

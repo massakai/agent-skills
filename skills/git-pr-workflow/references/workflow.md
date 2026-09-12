@@ -2,6 +2,8 @@
 
 CLI は stdout に JSON、stderr に短い実行概要を出す。結果の `status` は `preview`、`observed`、`applied`、`stopped` のいずれかで、`completed`、`remaining`、`error` を確認する。更新操作の preview 結果に含まれる `snapshot.state` と `head`、publish の `body_sha256` を apply 呼び出しへコピーする。
 
+`snapshot.status` は除外ディレクトリをまとめ、最大4000文字に制限した表示である。`status_truncated` がtrueなら必要なパスを別途確認する。状態照合のdigestは省略前の一覧を使うため、表示の省略をcleanの根拠にしない。
+
 ## 共通入力と安全な再開
 
 例では `/path/to/checkout` と `example-org/example-repo` を使う。更新操作は `--base`、`--branch`、`--expected-head`、`--expected-state` を必須とし、publish はさらに `--expected-body` を必須とする。`--apply` がない限り変更しない。基準値が変わったら preview を取り直し、同じ操作を推測で再試行しない。
