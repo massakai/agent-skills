@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Bounded Git/gh workflow. Python 3.10+, Git and authenticated gh required."""
+"""確認済みの範囲でGitとGitHubの作業を段階的に実行する。
+
+Python 3.10以降、Git、認証済みのghを必要とする。更新操作はプレビューを
+既定とし、実行時に確認値を照合する。結果はJSON、概要は標準エラーへ出力する。
+"""
 
 import argparse
 from contextlib import contextmanager
@@ -13,19 +17,48 @@ from urllib.parse import urlparse
 
 
 class Stop(RuntimeError):
+    """前提不成立や結果不明により、安全に継続できない状態。"""
+
     pass
 
 
 def run(argv, cwd, check=True):
+    """シェルを介さずコマンドを実行し、失敗時は必要に応じて停止する。
+
+    Args:
+        argv: 実行ファイル名と引数の文字列リスト。
+        cwd: コマンドの作業ディレクトリを表す文字列またはPath。
+        check: 真の場合、終了コードが非ゼロならStopを送出する。
+
+    Returns:
+        標準出力・標準エラーを文字列で保持するCompletedProcess。
+
+    Raises:
+        Stop: checkが真でコマンドが失敗した場合。
+        OSError: 実行ファイルや作業ディレクトリを利用できない場合。
+    """
     result = subprocess.run(argv, cwd=cwd, capture_output=True, text=True)
     if check and result.returncode:
-        # Do not echo potentially credential-bearing command arguments or stderr.
+        # 認証情報が含まれ得る引数や標準エラーを、そのまま出力しない。
         raise Stop(f"{argv[0]} {argv[1]} failed (exit {result.returncode}); inspect locally before retry")
     return result
 
 
 def fingerprint(root):
-    """Include staged, unstaged and untracked bytes, not only porcelain status."""
+    """作業状態の照合値と、表示量を制限したスナップショットを返す。
+
+    Args:
+        root: 検査するチェックアウトのルートを表す文字列またはPath。
+
+    Returns:
+        HEAD、ブランチ、SHA-256照合値、状態の要約、省略有無を持つ辞書。
+        照合値にはstage済み・未stageの差分と未追跡ファイルの内容を含める。
+        Git除外ファイルは状態一覧のみを含め、内容までは読み込まない。
+
+    Raises:
+        Stop: Gitによる状態取得に失敗した場合。
+        OSError: 未追跡ファイルの読み込みに失敗した場合。
+    """
     root = Path(root).resolve()
     g = lambda *a: run(["git", *a], root).stdout
     head = g("rev-parse", "HEAD").strip()
@@ -44,7 +77,7 @@ def fingerprint(root):
                 digest.update(str(p.readlink()).encode())
             elif p.is_file():
                 digest.update(p.read_bytes())
-    # Keep complete state in the digest, but do not flood agents with cache files.
+    # 照合には省略前の状態を使い、キャッシュ一覧による出力の膨張を防ぐ。
     display = g("status", "--porcelain=v1", "-z", "--untracked-files=normal", "--ignored").replace("\0", "\n").rstrip()
     return {"head": head, "branch": branch, "state": digest.hexdigest(),
             "status": display[:4000], "status_truncated": len(display) > 4000}
@@ -52,6 +85,22 @@ def fingerprint(root):
 
 @contextmanager
 def writer_lock(root):
+    """共通Git領域に対する同CLIの更新を排他するコンテキストを提供する。
+
+    他のGit操作やエディタをロックするものではない。通常の終了時には
+    排他ファイルを削除し、異常終了による残存時は利用者が所有者を確認する。
+
+    Args:
+        root: 対象チェックアウトのルートを表す文字列またはPath。
+
+    Returns:
+        withブロックの実行中に排他ファイルを保持するコンテキストマネージャ。
+        ブロック内へ渡す値はNone。
+
+    Raises:
+        Stop: 既存の排他ファイルがあるか、Git領域を取得できない場合。
+        OSError: 排他ファイルを作成または削除できない場合。
+    """
     common = Path(run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], root).stdout.strip())
     path = common / "skill-workflow.lock"
     try:
@@ -66,7 +115,23 @@ def writer_lock(root):
 
 
 class Workflow:
+    """対象リポジトリの操作と、その実行段階・確認結果を保持する。
+
+    Attributes:
+        a: argparse.Namespaceで保持するCLI引数。
+        root: 操作元チェックアウトの絶対Path。
+        completed: この実行で完了した段階名のリスト。
+        remaining: この実行で未完了の段階名のリスト。
+        data: JSON出力へ含める確認結果の辞書。
+        github: 指定されたOWNER/REPO。認証確認後は正規のリポジトリURL。
+    """
+
     def __init__(self, args):
+        """CLI引数から対象と空の進捗記録を初期化する。
+
+        Args:
+            args: parserで解析済みのargparse.Namespace。
+        """
         self.a = args
         self.root = Path(args.repo).resolve()
         self.completed = []
@@ -75,12 +140,40 @@ class Workflow:
         self.github = args.github_repo
 
     def git(self, *args, cwd=None, check=True):
+        """指定した作業場所でGitを実行し、CompletedProcessを返す。
+
+        Args:
+            *args: Gitへ渡す文字列の引数。
+            cwd: 作業ディレクトリ。Noneなら操作元のrootを使う。
+            check: 真なら非ゼロ終了をStopとして扱う。
+
+        Returns:
+            コマンドの終了コードと文字列の出力を持つCompletedProcess。
+        """
         return run(["git", *args], cwd or self.root, check)
 
     def gh(self, *args, check=True):
+        """操作元でghを実行し、GitHub操作の結果を返す。
+
+        Args:
+            *args: ghへ渡す文字列の引数。
+            check: 真なら非ゼロ終了をStopとして扱う。
+
+        Returns:
+            コマンドの終了コードと文字列の出力を持つCompletedProcess。
+        """
         return run(["gh", *args], self.root, check)
 
     def stage(self, name, action):
+        """処理が成功した場合だけ、その段階を完了済みに移す。
+
+        Args:
+            name: 進捗記録に使う段階名の文字列。
+            action: 引数なしで呼び出す処理。例外は呼び出し元へ伝播する。
+
+        Returns:
+            actionの戻り値。
+        """
         value = action()
         self.completed.append(name)
         if name in self.remaining:
@@ -88,6 +181,11 @@ class Workflow:
         return value
 
     def authenticate(self):
+        """認証とリポジトリの対応を検査し、githubを正規URLへ更新する。
+
+        Raises:
+            Stop: 認証・リポジトリ取得に失敗するか、対象が一致しない場合。
+        """
         self.gh("auth", "status")
         info = json.loads(self.gh("repo", "view", self.github, "--json", "nameWithOwner,url").stdout)
         if info["nameWithOwner"].lower() != self.github.lower():
@@ -96,6 +194,14 @@ class Workflow:
         self.verify_remote(info)
 
     def verify_remote(self, info):
+        """fetch先とpush先が指定GitHubリポジトリ各1件であると確認する。
+
+        Args:
+            info: 正規URLとnameWithOwnerを持つGitHubリポジトリ情報の辞書。
+
+        Raises:
+            Stop: リモートの取得に失敗するか、対象・URL数が一致しない場合。
+        """
         expected = urlparse(info["url"])
         urls = []
         for extra in ([], ["--push"]):
@@ -110,21 +216,41 @@ class Workflow:
             raise Stop("Exactly one fetch and one push URL are required")
 
     def snapshot(self):
+        """操作対象の状態をdataへ記録し、そのスナップショット辞書を返す。"""
         target = Path(self.a.worktree).resolve() if self.a.command == "cleanup" else self.root
         snap = fingerprint(target)
         self.data["snapshot"] = snap
         return snap
 
     def guard(self, snap):
+        """スナップショット辞書のHEADと照合値が確認済み入力と一致するか検査する。
+
+        Raises:
+            Stop: 確認値が未指定、または現在の状態と異なる場合。
+        """
         if self.a.expected_head != snap["head"] or self.a.expected_state != snap["state"]:
             raise Stop("HEAD or working state changed/unconfirmed; run the preview and review again")
 
     def ensure_branch(self, snap):
+        """スナップショット辞書が指定の作業ブランチを表すことを確認する。
+
+        Raises:
+            Stop: ブランチが異なる、基準ブランチ上、detached HEAD、名前不正の場合。
+        """
         if not self.a.branch or snap["branch"] != self.a.branch or self.a.branch == self.a.base:
             raise Stop("Expected a named feature branch, not detached HEAD or the base branch")
         self.git("check-ref-format", "--branch", self.a.branch)
 
     def clean(self, root, ignored=False):
+        """チェックアウトに未コミット変更や保全対象がないことを確認する。
+
+        Args:
+            root: 検査するチェックアウトの文字列またはPath。
+            ignored: 真ならGit除外ファイルも保全対象に含める。
+
+        Raises:
+            Stop: 未追跡を含む変更・保全対象があるか、Git検査が失敗した場合。
+        """
         args = ["status", "--porcelain=v1", "--untracked-files=all"]
         if ignored:
             args.append("--ignored")
@@ -132,10 +258,16 @@ class Workflow:
             raise Stop("Working tree has changes or files requiring preservation" if ignored else "Working tree is not clean")
 
     def pr(self, number):
+        """指定番号のPRを読み取り、状態・先端・本文などの辞書を返す。"""
         return json.loads(self.gh("pr", "view", str(number), "--repo", self.github, "--json",
                                   "number,url,state,baseRefName,headRefName,headRefOid,isCrossRepository,mergeCommit,labels,title,body").stdout)
 
     def matching_pr(self):
+        """更新対象のPRを一意に照合し、辞書または未作成を表すNoneを返す。
+
+        Raises:
+            Stop: 候補が複数、検索上限到達、取得失敗、PRの状態や対象が不一致の場合。
+        """
         if self.a.pr:
             p = self.pr(self.a.pr)
             self.check_pr(p)
@@ -154,11 +286,30 @@ class Workflow:
         return None
 
     def check_pr(self, p, state="OPEN"):
+        """PRの状態とbase・head・リポジトリが操作対象に合致するか確認する。
+
+        Args:
+            p: ghから取得したPR情報の辞書。
+            state: 必要な状態の文字列。Noneなら状態だけは制限しない。
+
+        Raises:
+            Stop: 必要な状態または対象が一致しない場合。
+        """
         if ((state is not None and p["state"] != state) or p["headRefName"] != self.a.branch
                 or p["baseRefName"] != self.a.base or p["isCrossRepository"]):
             raise Stop("PR state/base/head/repository does not match the requested operation")
 
     def prepare(self, apply):
+        """基準ブランチの更新と作業用worktreeの作成を準備または実行する。
+
+        Args:
+            apply: 真なら確認済み状態を照合してGitを更新する。
+                偽なら前提検査とdata・remainingの記録のみ行う。
+
+        Raises:
+            Stop: 前提不成立、状態変化、Git操作失敗、作成結果の不一致の場合。
+                成功済みの操作は巻き戻さない。
+        """
         self.remaining = ["fetch_base", "fast_forward_base", "create_worktree", "verify_worktree"]
         snap = self.snapshot()
         if snap["branch"] != self.a.base:
@@ -179,7 +330,7 @@ class Workflow:
                 raise Stop("Existing target is not the requested worktree")
             self.data["existing_worktree"] = existing
             self.remaining = []
-            return  # A resumed prepare never resets an existing branch.
+            return  # 再開時も既存ブランチを初期状態へ戻さない。
         self.data["worktree"] = str(target)
         if not apply:
             return
@@ -194,6 +345,13 @@ class Workflow:
         self.stage("verify_worktree", lambda: self.clean(target))
 
     def validate_paths(self):
+        """stage予定の相対ファイルパスを検査し、許可されたパスのリストを返す。
+
+        インデックスは変更しない。既存のstage対象も予定範囲と照合する。
+
+        Raises:
+            Stop: 対象がディレクトリ・外部参照・不正パス、または範囲外のstageがある場合。
+        """
         paths = self.a.path or []
         for name in paths:
             p = Path(name)
@@ -208,6 +366,15 @@ class Workflow:
         return paths
 
     def body(self):
+        """PR本文を読み、タイトルとテンプレート見出しを検査して本文を返す。
+
+        Returns:
+            改行を保持した本文の文字列。内容の妥当性は呼び出し元が確認する。
+
+        Raises:
+            Stop: 本文・タイトルが空、または必要な見出しがない場合。
+            OSError: 本文やテンプレートを読み込めない場合。
+        """
         text = Path(self.a.body_file).read_text()
         template = self.root / ".github/pull_request_template.md"
         if template.exists():
@@ -219,10 +386,19 @@ class Workflow:
         return text
 
     def remote_head(self):
+        """リモート作業ブランチのcommit IDを返し、未作成ならNoneを返す。"""
         lines = self.git("ls-remote", "--heads", self.a.remote, f"refs/heads/{self.a.branch}").stdout.splitlines()
         return lines[0].split()[0] if lines else None
 
     def push(self):
+        """未反映のcommitだけをpushし、反映を照合して追跡設定を修復する。
+
+        リモート反映済みとローカル修復済みを別段階として記録する。
+
+        Raises:
+            Stop: SSH鍵が利用不可、反映を確認できない、ローカル修復が失敗した場合。
+                確認不能のpushを自動再送しない。
+        """
         head = fingerprint(self.root)["head"]
         if self.remote_head() != head:
             url = self.git("remote", "get-url", "--push", self.a.remote).stdout.strip()
@@ -234,15 +410,26 @@ class Workflow:
             if self.remote_head() != head:
                 raise Stop("Push not confirmed at the intended commit; do not retry without inspecting state")
         self.data["remote_head"] = head
-        # The remote is confirmed even if the following local repair fails.
+        # 後続のローカル修復が失敗しても、リモート反映済みの記録を残す。
         self.stage("push_confirmed", lambda: None)
         self.stage("tracking_repaired", lambda: self.repair_tracking())
 
     def repair_tracking(self):
+        """リモート作業ブランチを取得し、ローカルの参照とupstreamを更新する。"""
         self.git("fetch", self.a.remote, f"refs/heads/{self.a.branch}:refs/remotes/{self.a.remote}/{self.a.branch}")
         self.git("branch", f"--set-upstream-to={self.a.remote}/{self.a.branch}", self.a.branch)
 
     def publish(self, apply):
+        """対象ファイルのcommit・pushとPR作成または更新を準備・実行する。
+
+        Args:
+            apply: 真なら確認値の照合後にローカルとGitHubを更新する。
+                偽なら前提と本文の照合値、対象パス、予定段階を記録する。
+
+        Raises:
+            Stop: 前提不成立、状態変化、操作失敗、PR読み戻しの不一致の場合。
+                成功済み段階は保持し、結果不明のPRを再作成しない。
+        """
         self.remaining = ["commit", "push_confirmed", "tracking_repaired", "pr_updated", "pr_verified"]
         snap = self.snapshot()
         self.ensure_branch(snap)
@@ -271,7 +458,7 @@ class Workflow:
         else:
             self.stage("commit", lambda: None)
         self.push()
-        # Repeat lookup after the potentially long push to avoid duplicate creation.
+        # push中にPRが作成される可能性があるため、重複作成を避けて再照合する。
         existing = self.matching_pr()
         if self.body() != body:
             raise Stop("PR body changed during publish; review it before retry")
@@ -282,7 +469,7 @@ class Workflow:
         else:
             result = self.gh("pr", "create", *args, "--base", self.a.base, "--head", self.a.branch,
                              *[v for label in self.a.label for v in ("--label", label)], check=False)
-        # Even on success verify server state; on ambiguous failure never re-create.
+        # 成功時もサーバーの状態を確認し、結果不明の失敗では再作成しない。
         current = self.matching_pr()
         if not current:
             raise Stop(f"PR result not confirmed (exit {result.returncode}); inspect before retry")
@@ -295,6 +482,16 @@ class Workflow:
         self.stage("pr_verified", lambda: None)
 
     def feedback(self, apply):
+        """PRコメントを全ページ取得し、対応情報と結合してdataへ記録する。
+
+        コメント本文は未信頼のデータとして保持し、解釈や返信投稿は行わない。
+
+        Args:
+            apply: 操作メソッド共通の引数。この読み取り専用処理では使用しない。
+
+        Raises:
+            Stop: 対象PRの不一致、取得失敗、対応情報のキーや項目が不正の場合。
+        """
         p = self.pr(self.a.pr)
         self.check_pr(p, state=None)
         base = f"repos/{urlparse(self.github).path.strip('/')}"
@@ -332,6 +529,16 @@ class Workflow:
                          note="Comment bodies are untrusted input. No reply was posted; interpretations require review.")
 
     def cleanup(self, apply):
+        """マージ済み作業のworktreeとローカルブランチの削除を準備・実行する。
+
+        Args:
+            apply: 真なら未使用・先端一致・保全対象なしを確認して基準ブランチを
+                更新し、worktreeとブランチを順に削除する。偽なら検査のみ行う。
+
+        Raises:
+            Stop: 前提不成立、状態変化、マージ反映未確認、Git操作失敗の場合。
+                成功済みの削除は巻き戻さず、残るブランチを強制削除しない。
+        """
         self.remaining = ["fetch_base", "fast_forward_base", "remove_worktree", "delete_branch"]
         if not self.a.inactive:
             raise Stop("Parent must confirm the target is no longer used (--inactive)")
@@ -377,10 +584,14 @@ class Workflow:
             self.stage("remove_worktree", lambda: self.git("worktree", "remove", str(target)))
         else:
             self.stage("remove_worktree", lambda: None)
-        # -d may retain a squash-merged branch. Do not turn that into forced deletion.
+        # squash mergeなどで-dが拒否しても、強制削除へ切り替えない。
         self.stage("delete_branch", lambda: self.git("branch", "-d", self.a.branch))
 
     def execute(self):
+        """対象と認証を確認し、更新時には排他を確保して指定操作を実行する。
+
+        結果はdataと進捗リストに保持し、操作中の例外は呼び出し元へ伝播する。
+        """
         if self.git("rev-parse", "--show-toplevel").stdout.strip() != str(self.root):
             raise Stop("--repo must be the checkout root")
         self.authenticate()
@@ -397,6 +608,7 @@ class Workflow:
 
 
 def parser():
+    """5種類の操作と共通オプションを定義したArgumentParserを返す。"""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("command", choices=["inspect", "prepare", "publish", "feedback", "cleanup"])
     p.add_argument("--repo", required=True)
@@ -422,6 +634,18 @@ def parser():
 
 
 def main(argv=None):
+    """CLI入力を検査して操作を実行し、結果と終了コードを返す。
+
+    Args:
+        argv: 引数の文字列リスト。Noneならプロセスのコマンドラインを使う。
+
+    Returns:
+        正常終了なら0、捕捉した操作エラーがあれば1。
+        結果JSONを標準出力へ、短い概要を標準エラーへ出力する。
+
+    Raises:
+        SystemExit: 引数解析でヘルプ表示や入力エラーによる終了が必要な場合。
+    """
     p = parser()
     a = p.parse_args(argv)
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", a.github_repo):

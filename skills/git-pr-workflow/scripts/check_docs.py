@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Check local Markdown links/anchors and common external local-path references.
+"""Markdownのローカルリンク・見出しと外部ローカル参照を検査する。
 
-Supports inline links/images, reference links, ATX/setext headings and HTML IDs.
-Does not execute examples or fetch URLs; see references/workflow.md for limits.
+インラインリンク・画像、参照リンク、ATX・Setext見出し、HTMLのIDに対応する。
+コード例の実行やURLの取得は行わない。制約はreferences/workflow.mdを参照する。
 """
 import argparse
 import json
@@ -14,6 +14,14 @@ from urllib.parse import unquote, urlsplit
 
 
 def prose(text):
+    """フェンスで囲まれたコードを空行に置き換えたMarkdown文字列を返す。
+
+    Args:
+        text: 検査対象のMarkdown文字列。
+
+    Returns:
+        コード例をリンク・見出しとして解釈しないための、行数を保持した本文。
+    """
     result = []
     fence = None
     for line in text.splitlines():
@@ -31,6 +39,15 @@ def prose(text):
 
 
 def anchors(text):
+    """Markdown見出しとHTMLのIDから参照可能なアンカーの集合を求める。
+
+    Args:
+        text: 参照先のMarkdown文字列。
+
+    Returns:
+        アンカー文字列の集合。同名見出しには出現順の番号を付ける。
+        フェンス内の見出しは含めない。
+    """
     text = prose(text)
     result = set(re.findall(r"\b(?:id|name)=[\"']([^\"']+)[\"']", text))
     used = set()
@@ -53,6 +70,21 @@ def anchors(text):
 
 
 def check(root, names):
+    """対象文書のリンク・アンカー・外部ローカル参照を読み取り専用で検査する。
+
+    Args:
+        root: リポジトリのルートを表す文字列またはPath。
+        names: 検査する文書のリポジトリ相対パスのリスト。
+
+    Returns:
+        検査ファイル数・リンク数、検出した問題のリスト、検査範囲の制約を持つ辞書。
+        外部URLには接続せず、代表的なローカルパスはコード例も含めて検査する。
+
+    Raises:
+        OSError: 文書の読み込みに失敗した場合。
+        UnicodeError: 文書を文字列として復号できない場合。
+        ValueError: URLを解析できない場合。
+    """
     root = Path(root).resolve()
     errors, checked = [], 0
     for name in names:
@@ -77,7 +109,7 @@ def check(root, names):
                 errors.append({"file": name, "reason": f"undefined reference: {key}"})
             else:
                 links.append(definitions[key])
-        # Validate definitions too, including shortcut reference targets.
+        # 短縮形式の参照リンクも検査するため、定義された参照先を含める。
         links.extend(definitions.values())
         for link in links:
             parsed = urlsplit(link)
@@ -94,6 +126,15 @@ def check(root, names):
 
 
 def main():
+    """CLI引数の文書を検査し、JSON出力とエラー有無を返す。
+
+    Returns:
+        問題があればTrue、なければFalse。プロセスの終了コードとして使う。
+        検査結果は標準出力へ書き出す。
+
+    Raises:
+        SystemExit: ヘルプ表示または不正な引数で終了する場合。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--path", action="append", required=True)

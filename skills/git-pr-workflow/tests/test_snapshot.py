@@ -1,3 +1,5 @@
+"""スナップショットの状態指紋と出力抑制を検証するテスト。"""
+
 import importlib.util
 from pathlib import Path
 import subprocess
@@ -12,10 +14,14 @@ spec.loader.exec_module(workflow)
 
 
 class SnapshotOutput(unittest.TestCase):
+    """ignoredファイルを含む状態指紋の不変条件を検証する。"""
+
     def test_ignored_files_affect_digest_without_flooding_output(self):
+        """ignoredファイルの増加を指紋に反映し、一覧出力を膨張させない。"""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             def git(*args):
+                """一時リポジトリ内でgitコマンドを実行する。"""
                 subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
             git("init", "-b", "main")
             git("config", "user.name", "Example")
