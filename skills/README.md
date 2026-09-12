@@ -26,6 +26,8 @@ skills/
 - プロンプトのひな型
 - 公開用サンプル
 
+Git と PR の操作では、[git-pr-workflow](git-pr-workflow/SKILL.md) と [worktree-status-check](worktree-status-check/SKILL.md) を使って対象・状態・削除条件を確認する。複数エージェントへ分担するときは [cost-aware-delegation](cost-aware-delegation/SKILL.md) を使い、担当範囲と共有書き込みの責任者を明示する。
+
 ## ここに置かないもの
 
 - 秘密情報
