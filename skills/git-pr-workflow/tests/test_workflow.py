@@ -80,7 +80,7 @@ class WorkflowTestCase(unittest.TestCase):
                     remote="origin", base="master", branch="codex/test", worktree=str(Path(self.tmp.name) / "wt"),
                     pr=None, path=[], message="テストの変更", title="Synthetic workflow test",
                     body_file=str(self.body_file), label=["codex"], ssh_public_key=None,
-                    mapping=None, inactive=False, apply=False, expected_head=None,
+                    mapping=None, inactive=False, discard_generated_caches=False, apply=False, expected_head=None,
                     expected_state=None, expected_body=None)
         data.update(overrides)
         return argparse.Namespace(**data)
@@ -315,10 +315,49 @@ class WorkflowTestCase(unittest.TestCase):
         target = Path(self.args("cleanup").worktree)
         git(self.root, "worktree", "add", str(target), "codex/test")
         (target / "ignored").write_text("preserve")
-        args = self.args("cleanup", inactive=True, pr=7, worktree=str(target))
+        args = self.args(
+            "cleanup",
+            inactive=True,
+            pr=7,
+            worktree=str(target),
+            discard_generated_caches=True,
+        )
         pr = self.open_pr(head=head, state="MERGED")
         with self.assertRaisesRegex(workflow.Stop, "requiring preservation"):
             self.run_execute(args, {"pr view 7": json.dumps(pr)})
+
+    def test_cleanup_discards_only_opted_in_generated_caches(self):
+        """明示指定時だけGit除外済みの開発キャッシュを削除してcleanupする。"""
+        self.make_branch()
+        (self.root / "merged.txt").write_text("merged")
+        (self.root / ".gitignore").write_text(".pytest_cache/\n")
+        git(self.root, "add", "merged.txt", ".gitignore")
+        git(self.root, "commit", "-m", "merged")
+        head = git(self.root, "rev-parse", "HEAD").stdout.strip()
+        git(self.root, "checkout", "master")
+        git(self.root, "merge", "--ff-only", head)
+        git(self.root, "push", "origin", "master")
+        target = Path(self.args("cleanup").worktree)
+        git(self.root, "worktree", "add", str(target), "codex/test")
+        cache = target / ".pytest_cache"
+        cache.mkdir()
+        (cache / "lastfailed").write_text("generated")
+        args = self.args(
+            "cleanup",
+            inactive=True,
+            pr=7,
+            worktree=str(target),
+            discard_generated_caches=True,
+        )
+        preview = FakeWorkflow(args)
+        snap = preview.snapshot()
+        args.apply = True
+        args.expected_head, args.expected_state = snap["head"], snap["state"]
+        pr = self.open_pr(head=head, state="MERGED")
+        result = self.run_execute(args, {"pr view 7": json.dumps(pr)})
+        self.assertEqual(result.data["discardable_generated_caches"], [".pytest_cache"])
+        self.assertIn("discard_generated_caches", result.completed)
+        self.assertFalse(target.exists())
 
     def test_cleanup_apply_removes_clean_merged_worktree_when_merge_is_in_base(self):
         """baseにmerge済みでcleanなworktreeを安全に削除できる。"""
