@@ -11,6 +11,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 from urllib.parse import urlparse
@@ -20,6 +21,12 @@ class Stop(RuntimeError):
     """前提不成立や結果不明により、安全に継続できない状態。"""
 
     pass
+
+
+GENERATED_CACHE_DIRECTORIES = frozenset(
+    {".venv", ".mypy_cache", ".pytest_cache", ".ruff_cache", "build", "dist", "htmlcov"}
+)
+GENERATED_CACHE_FILES = frozenset({".coverage", "coverage.xml"})
 
 
 def run(argv, cwd, check=True):
@@ -83,6 +90,70 @@ def fingerprint(root):
             "status": display[:4000], "status_truncated": len(display) > 4000}
 
 
+def generated_cache_candidates(root):
+    """Git除外済みの許可リスト内にある再生成可能キャッシュを返す。
+
+    Args:
+        root: cleanup対象worktreeのルートを表す文字列またはPath。
+
+    Returns:
+        削除候補のworktree直下パスを名前順に並べたリスト。
+
+    Raises:
+        Stop: 許可リスト外のGit除外ファイル、未確認のsymlink、または
+            Git除外規則との不一致がある場合。
+    """
+    root = Path(root).resolve()
+    result = run(
+        ["git", "ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
+        root,
+    )
+    candidate_names = set()
+    for name in result.stdout.split("\0"):
+        if not name:
+            continue
+        relative = Path(name)
+        if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+            raise Stop("Ignored path is not a safe worktree-relative cache path")
+        first = relative.parts[0]
+        if first in GENERATED_CACHE_DIRECTORIES:
+            candidate_names.add(first)
+        elif len(relative.parts) == 1 and first in GENERATED_CACHE_FILES:
+            candidate_names.add(first)
+        else:
+            raise Stop("Ignored files requiring preservation")
+    candidates = []
+    for name in sorted(candidate_names):
+        path = root / name
+        if path.is_symlink():
+            raise Stop("Generated cache candidate must not be a symlink")
+        ignored = run(["git", "check-ignore", "-q", "--", name], root, check=False)
+        if ignored.returncode:
+            raise Stop("Generated cache candidate is not Git-ignored")
+        candidates.append(path)
+    return candidates
+
+
+def discard_generated_caches(candidates):
+    """確認済みの再生成可能キャッシュだけを削除する。
+
+    Args:
+        candidates: ``generated_cache_candidates`` が返したパスの列。
+
+    Raises:
+        Stop: symlinkまたは許可されないファイル種別が含まれる場合。
+    """
+    for path in candidates:
+        if path.is_symlink():
+            raise Stop("Generated cache candidate must not be a symlink")
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.is_file():
+            path.unlink()
+        elif path.exists():
+            raise Stop("Generated cache candidate has an unsupported file type")
+
+
 @contextmanager
 def writer_lock(root):
     """共通Git領域に対する同CLIの更新を排他するコンテキストを提供する。
@@ -107,6 +178,8 @@ def writer_lock(root):
         handle = path.open("x")
     except FileExistsError as exc:
         raise Stop("Another workflow writer or an interrupted run holds the lock; verify its owner before removing it") from exc
+    except PermissionError as exc:
+        raise Stop("Cannot create the shared Git workflow lock; use a local executor with write access to the common Git directory") from exc
     try:
         handle.close()
         yield
@@ -564,13 +637,33 @@ class Workflow:
             common = lambda r: self.git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=r).stdout
             if common(target) != common(self.root):
                 raise Stop("Target is not in the same clone")
-            self.clean(target, ignored=True)
+            self.clean(target)
+            generated_caches = generated_cache_candidates(target)
+            if generated_caches:
+                if not self.a.discard_generated_caches:
+                    raise Stop("Generated caches remain; review them and opt in with --discard-generated-caches")
+                self.data["discardable_generated_caches"] = [
+                    str(path.relative_to(target)) for path in generated_caches
+                ]
+                self.remaining.insert(0, "discard_generated_caches")
+            else:
+                self.clean(target, ignored=True)
         else:
             snap = {"head": branch_head.stdout.strip(), "state": "worktree-removed"}
             self.data["snapshot"] = snap
+            generated_caches = []
         if not apply:
             return
         self.guard(snap)
+        if generated_caches:
+            self.stage(
+                "discard_generated_caches",
+                lambda: discard_generated_caches(generated_caches),
+            )
+            self.clean(target, ignored=True)
+            post_discard_snap = self.snapshot()
+        else:
+            post_discard_snap = None
         self.stage("fetch_base", lambda: self.git("fetch", self.a.remote, self.a.base))
         merge = (p.get("mergeCommit") or {}).get("oid")
         if not merge or self.git("merge-base", "--is-ancestor", merge, "FETCH_HEAD", check=False).returncode:
@@ -579,7 +672,14 @@ class Workflow:
             raise Stop("Base checkout changed during cleanup")
         self.stage("fast_forward_base", lambda: self.git("merge", "--ff-only", "FETCH_HEAD"))
         if target.exists():
-            self.guard(self.snapshot())
+            current = self.snapshot()
+            if post_discard_snap is None:
+                self.guard(current)
+            elif (
+                current["head"] != post_discard_snap["head"]
+                or current["state"] != post_discard_snap["state"]
+            ):
+                raise Stop("Worktree changed after generated cache discard")
             self.clean(target, ignored=True)
             self.stage("remove_worktree", lambda: self.git("worktree", "remove", str(target)))
         else:
@@ -626,6 +726,7 @@ def parser():
     p.add_argument("--ssh-public-key")
     p.add_argument("--mapping")
     p.add_argument("--inactive", action="store_true")
+    p.add_argument("--discard-generated-caches", action="store_true")
     p.add_argument("--apply", action="store_true")
     p.add_argument("--expected-head")
     p.add_argument("--expected-state")

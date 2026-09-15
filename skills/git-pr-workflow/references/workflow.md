@@ -27,6 +27,10 @@ python3 skills/git-pr-workflow/scripts/workflow.py prepare \
 
 CLIはPython 3.10以降、Git、認証済みのghを必要とする。例のスクリプト位置は配布元から実行する場合で、インストール後は読み込んだスキルのディレクトリから解決する。`inspect` もGitHub認証とリモートの対応を確認する。fetch/push先は同じ指定GitHubリポジトリに限り、fork PRは扱わない。
 
+SSH pushの事前確認は、実際にpushするローカル実行経路で`ssh-add -T <公開鍵>`を行う。隔離ランナーは`SSH_AUTH_SOCK`を継承しないことがあるため、その結果だけで鍵が未登録とは判断せず、pushを実行しない。`--apply`は共通Gitディレクトリに排他ロックを作るため、同じくロック作成権限がある経路を使う。
+
+プロジェクトがuvで依存を管理する場合、pytestをimportするunittestは素の`python3`ではなく`uv run python -m unittest discover -s <tests> -v`で実行する。
+
 ## publish
 
 対象パス、コミットメッセージ、PR title、body file を明示する。既存 PR は `--pr` がなくても matching PR を自動検出する。preview の `body_sha256` を apply に渡す。
@@ -65,6 +69,8 @@ python3 skills/git-pr-workflow/scripts/workflow.py cleanup \
 ```
 
 `--inactive` は親が対象に active な利用がないと確認済みであることを表す。`--pr` は必須。ignored/untracked が残る場合や PR の base/head、merge 後の追加コミットが確認できない場合は削除しない。cleanup は状態を JSON で返し、分類レポートを生成しない。削除する場合も worktree は `git worktree remove`、branch は `git branch -d` 相当で、force を使わない。
+
+`--discard-generated-caches`を付けると、Git除外済みで次の許可リストに一致するものだけを、previewの状態照合後に削除できる: `.venv/`、`.mypy_cache/`、`.pytest_cache/`、`.ruff_cache/`、`build/`、`dist/`、`htmlcov/`、`.coverage`、`coverage.xml`。それ以外のignoredファイル、symlink、未追跡ファイルは停止する。`uv.lock`は追跡対象であり、`data/`・`logs/`・`artifacts/`は保全確認が必要なため削除しない。
 
 preview後、同じ引数に `--apply` を追加する。保持するファイルは存続するチェックアウトの除外済み保存先へ退避し、ファイル一覧・サイズ・必要なハッシュや内容を照合する。squash mergeなどで `branch -d` が失敗した場合は、worktree削除済み・ブランチ保持を報告し、強制削除しない。削除済みworktreeからの再開では `snapshot.state` が `worktree-removed` になる。
 
