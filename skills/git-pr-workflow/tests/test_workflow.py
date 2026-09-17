@@ -6,6 +6,7 @@
 import argparse
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -358,6 +359,85 @@ class WorkflowTestCase(unittest.TestCase):
         self.assertEqual(result.data["discardable_generated_caches"], [".pytest_cache"])
         self.assertIn("discard_generated_caches", result.completed)
         self.assertFalse(target.exists())
+
+    def test_cleanup_refuses_python_bytecode_cache_without_opt_in(self):
+        """明示指定なしではネストしたPythonバイトコードキャッシュを保全する。"""
+        self.make_branch()
+        (self.root / "merged.txt").write_text("merged")
+        (self.root / ".gitignore").write_text("package/__pycache__/\n")
+        git(self.root, "add", "merged.txt", ".gitignore")
+        git(self.root, "commit", "-m", "merged")
+        head = git(self.root, "rev-parse", "HEAD").stdout.strip()
+        git(self.root, "checkout", "master")
+        target = Path(self.args("cleanup").worktree)
+        git(self.root, "worktree", "add", str(target), "codex/test")
+        cache = target / "package" / "__pycache__"
+        cache.mkdir(parents=True)
+        (cache / "module.cpython-313.pyc").write_text("generated")
+        args = self.args("cleanup", inactive=True, pr=7, worktree=str(target))
+        pr = self.open_pr(head=head, state="MERGED")
+        with self.assertRaisesRegex(workflow.Stop, "Generated caches remain"):
+            self.run_execute(args, {"pr view 7": json.dumps(pr)})
+        self.assertTrue(cache.exists())
+
+    def test_cleanup_discards_nested_python_bytecode_cache_after_opt_in(self):
+        """明示指定時だけネストしたPythonバイトコードキャッシュを削除する。"""
+        self.make_branch()
+        (self.root / "merged.txt").write_text("merged")
+        (self.root / ".gitignore").write_text("package/__pycache__/\n")
+        git(self.root, "add", "merged.txt", ".gitignore")
+        git(self.root, "commit", "-m", "merged")
+        head = git(self.root, "rev-parse", "HEAD").stdout.strip()
+        git(self.root, "checkout", "master")
+        git(self.root, "merge", "--ff-only", head)
+        git(self.root, "push", "origin", "master")
+        target = Path(self.args("cleanup").worktree)
+        git(self.root, "worktree", "add", str(target), "codex/test")
+        cache = target / "package" / "__pycache__"
+        cache.mkdir(parents=True)
+        (cache / "module.cpython-313.pyc").write_text("generated")
+        args = self.args(
+            "cleanup",
+            inactive=True,
+            pr=7,
+            worktree=str(target),
+            discard_generated_caches=True,
+        )
+        snap = FakeWorkflow(args).snapshot()
+        args.apply = True
+        args.expected_head, args.expected_state = snap["head"], snap["state"]
+        pr = self.open_pr(head=head, state="MERGED")
+        result = self.run_execute(args, {"pr view 7": json.dumps(pr)})
+        self.assertEqual(result.data["discardable_generated_caches"], ["package/__pycache__"])
+        self.assertIn("discard_generated_caches", result.completed)
+        self.assertFalse(target.exists())
+
+    def test_generated_cache_candidates_reject_nested_ignored_file(self):
+        """Pythonキャッシュ以外のネストしたignoredファイルを保全対象にする。"""
+        (self.root / ".gitignore").write_text(
+            "package/__pycache__/\npackage/ignored.txt\n"
+        )
+        git(self.root, "add", ".gitignore")
+        git(self.root, "commit", "-m", "ignore generated files")
+        cache = self.root / "package" / "__pycache__"
+        cache.mkdir(parents=True)
+        (cache / "module.cpython-313.pyc").write_text("generated")
+        (self.root / "package" / "ignored.txt").write_text("preserve")
+        with self.assertRaisesRegex(workflow.Stop, "requiring preservation"):
+            workflow.generated_cache_candidates(self.root)
+
+    def test_generated_cache_candidates_rejects_symlinked_python_bytecode_cache(self):
+        """symlink化されたPythonバイトコードキャッシュは削除候補にしない。"""
+        (self.root / ".gitignore").write_text("package/__pycache__\n")
+        git(self.root, "add", ".gitignore")
+        git(self.root, "commit", "-m", "ignore generated cache")
+        external = Path(self.tmp.name) / "external-cache"
+        external.mkdir()
+        package = self.root / "package"
+        package.mkdir()
+        os.symlink(external, package / "__pycache__")
+        with self.assertRaisesRegex(workflow.Stop, "must not be a symlink"):
+            workflow.generated_cache_candidates(self.root)
 
     def test_cleanup_apply_removes_clean_merged_worktree_when_merge_is_in_base(self):
         """baseにmerge済みでcleanなworktreeを安全に削除できる。"""

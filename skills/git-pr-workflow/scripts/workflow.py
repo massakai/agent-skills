@@ -27,6 +27,7 @@ GENERATED_CACHE_DIRECTORIES = frozenset(
     {".venv", ".mypy_cache", ".pytest_cache", ".ruff_cache", "build", "dist", "htmlcov"}
 )
 GENERATED_CACHE_FILES = frozenset({".coverage", "coverage.xml"})
+PYTHON_BYTECODE_CACHE_DIRECTORY = "__pycache__"
 
 
 def run(argv, cwd, check=True):
@@ -117,16 +118,21 @@ def generated_cache_candidates(root):
             raise Stop("Ignored path is not a safe worktree-relative cache path")
         first = relative.parts[0]
         if first in GENERATED_CACHE_DIRECTORIES:
-            candidate_names.add(first)
+            candidate_names.add(Path(first))
         elif len(relative.parts) == 1 and first in GENERATED_CACHE_FILES:
-            candidate_names.add(first)
+            candidate_names.add(Path(first))
+        elif PYTHON_BYTECODE_CACHE_DIRECTORY in relative.parts:
+            cache_index = relative.parts.index(PYTHON_BYTECODE_CACHE_DIRECTORY)
+            candidate_names.add(Path(*relative.parts[:cache_index + 1]))
         else:
             raise Stop("Ignored files requiring preservation")
     candidates = []
-    for name in sorted(candidate_names):
+    for name in sorted(candidate_names, key=str):
         path = root / name
         if path.is_symlink():
             raise Stop("Generated cache candidate must not be a symlink")
+        if name.name == PYTHON_BYTECODE_CACHE_DIRECTORY and not path.is_dir():
+            raise Stop("Python bytecode cache candidate must be a directory")
         ignored = run(["git", "check-ignore", "-q", "--", name], root, check=False)
         if ignored.returncode:
             raise Stop("Generated cache candidate is not Git-ignored")
