@@ -27,6 +27,25 @@ python3 skills/git-pr-workflow/scripts/workflow.py prepare \
 
 CLIはPython 3.10以降、Git、認証済みのghを必要とする。例のスクリプト位置は配布元から実行する場合で、インストール後は読み込んだスキルのディレクトリから解決する。`inspect` もGitHub認証とリモートの対応を確認する。fetch/push先は同じ指定GitHubリポジトリに限り、fork PRは扱わない。
 
+## GitHub 認証確認の実行経路
+
+GitHub 操作の前に、実際に操作する通常のローカル実行経路で
+`gh auth status` を読み取り確認として実行する。トークン値は表示、転記、
+保存しない。`gh auth token` の実行や、`gh auth status` の出力に含まれる
+Token 行の共有・記録もしない。
+
+sandbox・隔離ランナーなどの資格情報ストアへ到達できない実行経路で
+`gh auth status` が失敗した場合、その失敗だけで保存済みトークンの失効や
+認証切れと判断しない。同じ読み取り確認を、OS の Keychain/keyring に
+到達可能な通常のローカル実行経路で再実行する。そこで成功した場合は
+隔離経路の到達性の問題として扱い、その隔離経路で GitHub 更新操作を
+続行しない。
+
+通常のローカル実行経路でも同じ確認が失敗し、資格情報ストアへの到達性の
+問題を切り分けた後に認証不能であることを確認できた場合だけ、`gh auth login`
+による再認証を案内する。再認証の案内や実行は、トークン値の表示・保存を
+伴わせない。
+
 SSH pushの事前確認は、実際にpushするローカル実行経路で`ssh-add -T <公開鍵>`を行う。隔離ランナーは`SSH_AUTH_SOCK`を継承しないことがあるため、その結果だけで鍵が未登録とは判断せず、pushを実行しない。`--apply`は共通Gitディレクトリに排他ロックを作るため、同じくロック作成権限がある経路を使う。
 
 プロジェクトがuvで依存を管理する場合、pytestをimportするunittestは素の`python3`ではなく`uv run python -m unittest discover -s <tests> -v`で実行する。
