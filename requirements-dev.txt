@@ -1,0 +1,2 @@
+# スキル frontmatter の検証に使う開発用依存。
+PyYAML==6.0.3
