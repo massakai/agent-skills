@@ -72,19 +72,17 @@ npx skills add massakai/agent-skills --skill mermaid-validate-and-render
 4. 例やサンプルは公開可能な内容だけにする
 5. 共有方針に影響する変更がある場合は [AGENTS.md](AGENTS.md) も更新する
 
-## 開発時の検証
+## `$skill-creator` を使った検証
 
-スキルを追加・変更したら、リポジトリ管理の検証器で対象の frontmatter と未完了の
-TODO を確認する。`uv` は一時環境を使うため、worktree に `.venv` を作成しない。
-
-```sh
-uv run --with-requirements requirements-dev.txt \
-  python scripts/validate_skill.py skills/<skill-name>
-```
-
-検証器を変更した場合は、同じ固定依存でテストも実行する。
+`$skill-creator` でスキルを追加または変更した場合は、Codex が提供する
+`scripts/quick_validate.py` を使って対象スキルを検証する。このスクリプトは
+リポジトリへ複製せず、読み込まれた `$skill-creator` のディレクトリから実行する。
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 uv run --with-requirements requirements-dev.txt \
-  python -m unittest discover -s tests -v
+python3 -m venv .venv
+.venv/bin/python -m pip install PyYAML==6.0.3
+.venv/bin/python <skill-creator-dir>/scripts/quick_validate.py \
+  skills/<skill-name>
 ```
+
+`.venv/` は Git 管理対象外である。検証後に不要なら削除する。
