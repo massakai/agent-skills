@@ -2,13 +2,14 @@
 
 GitHub で共有できる AI エージェント向けスキルを管理するリポジトリです。
 
-このリポジトリは、再利用可能なスキル本体と、その作成・配布に必要な公開可能資料だけを扱います。Codex 全般の個人設定、認証情報、キャッシュ、ローカル環境固有の状態は管理しません。
+このリポジトリは、再利用可能なスキル本体と、その作成・配布に必要な公開可能資料だけを扱います。
+Codex 全般の個人設定、認証情報、キャッシュ、ローカル環境固有の状態は管理しません。
 
 ## このリポジトリで扱うもの
 
 - `skills/` 配下の共有スキル
 - スキルの参照資料、サンプル、補助スクリプト
-- スキル共有方針をまとめた [AGENTS.md](/Users/massakai/Documents/agent-skills/AGENTS.md)
+- スキル共有方針をまとめた [AGENTS.md](AGENTS.md)
 
 ## 扱わないもの
 
@@ -46,7 +47,7 @@ GitHub で共有できる AI エージェント向けスキルを管理するリ
 - 秘密情報、非公開 URL、端末固有の前提を埋め込まない
 - 大きな万能スキル 1 つより、小さく合成しやすいスキルを優先する
 
-詳しい共有方針は [AGENTS.md](/Users/massakai/Documents/agent-skills/AGENTS.md)、`skills/` 配下の配置規約は [skills/README.md](/Users/massakai/Documents/agent-skills/skills/README.md) を参照してください。
+詳しい共有方針は [AGENTS.md](AGENTS.md)、`skills/` 配下の配置規約は [skills/README.md](skills/README.md) を参照してください。
 
 ## 使い方
 
@@ -70,4 +71,19 @@ npx skills add massakai/agent-skills --skill mermaid-validate-and-render
 2. `SKILL.md` に目的、使う場面、手順、ガードレールを書く
 3. 必要なら `references/`、`scripts/`、`examples/` を追加する
 4. 例やサンプルは公開可能な内容だけにする
-5. 共有方針に影響する変更がある場合は [AGENTS.md](/Users/massakai/Documents/agent-skills/AGENTS.md) も更新する
+5. 共有方針に影響する変更がある場合は [AGENTS.md](AGENTS.md) も更新する
+
+## `$skill-creator` を使った検証
+
+`$skill-creator` でスキルを追加または変更した場合は、Codex が提供する `scripts/quick_validate.py` を使って対象スキルを検証する。
+このスクリプトはリポジトリへ複製せず、読み込まれた `$skill-creator` のディレクトリから実行する。
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install PyYAML==6.0.3
+.venv/bin/python <skill-creator-dir>/scripts/quick_validate.py \
+  skills/<skill-name>
+```
+
+`.venv/` は Git 管理対象外である。
+検証後に不要なら削除する。
