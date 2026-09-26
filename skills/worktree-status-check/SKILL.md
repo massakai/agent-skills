@@ -17,7 +17,7 @@ cleanupの前に対象が使われていないことを確認し、PRのbase/hea
 
 ## 事前確認
 
-1. `gh auth status` で GitHub CLI の認証状態を確認する。
+1. PR 状態を確認する場合は、資格情報ストアへ到達できる通常のローカル実行経路で `gh auth status` を確認する。sandbox・隔離経路の失敗は認証失効と扱わない。
 2. `git worktree list --porcelain` で worktree を列挙する。
 3. 各 worktree はその worktree 自身のパスで確認する。
 4. 安全性の判定には未追跡・Git除外ファイルも含める。
@@ -98,7 +98,7 @@ worktree 自体は完了済みまたは放置気味に見えるが、ローカ�
 使いやすいコマンド例:
 
 ```sh
-gh auth status
+gh auth status # 資格情報ストアへ到達できる通常ローカル実行経路で実行する
 git worktree list --porcelain
 git -C <path> status --short --untracked-files=all --ignored
 git -C <path> status -sb
@@ -130,5 +130,5 @@ action の表現例:
 
 - cleanup の主手段として `rm -rf` を勧めない。
 - 未追跡・Git除外ファイルを削除可否の判定に含める。更新日時が古いだけでは破棄可能と判断しない。
-- `gh auth status` が失敗した場合は、PR ベースの判定が不完全であることを明記し、ローカル情報だけで補助判定する。
+- 通常ローカル経路で `gh auth status` を確認できない場合は、認証状態と PR 情報を未確定として明記し、ローカル情報だけで安全側に補助判定する。sandbox・隔離経路の失敗だけから認証切れと案内しない。
 - PR の状態とローカルの activity が矛盾する場合は、より安全側の分類を採用し、その理由も書く。

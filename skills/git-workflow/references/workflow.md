@@ -8,10 +8,14 @@ CLI は stdout に JSON、stderr に短い実行概要を出す。結果の `sta
 
 例では `/path/to/checkout` と `example-org/example-repo` を使う。更新操作は `--base`、`--branch`、`--expected-head`、`--expected-state` を必須とし、publish はさらに `--expected-body` を必須とする。`--apply` がない限り変更しない。基準値が変わったら preview を取り直し、同じ操作を推測で再試行しない。
 
+`inspect` は `--github-repo` なしで Git-only の snapshot と worktree を観測できる。この場合は `gh` を実行せず、GitHub 認証も不要である。`--github-repo` を指定した `inspect` と、`prepare`、`publish`、`feedback`、`cleanup` は GitHub 操作であり、認証と repo/remote 照合を行う。
+
 ```sh
-python3 skills/git-pr-workflow/scripts/workflow.py inspect \
+python3 skills/git-workflow/scripts/workflow.py inspect \
+  --repo /path/to/checkout
+python3 skills/git-workflow/scripts/workflow.py inspect \
   --repo /path/to/checkout --github-repo example-org/example-repo
-python3 skills/git-pr-workflow/scripts/workflow.py prepare \
+python3 skills/git-workflow/scripts/workflow.py prepare \
   --repo /path/to/checkout --github-repo example-org/example-repo \
   --base master --branch codex/example --worktree /path/to/worktree
 ```
@@ -19,13 +23,13 @@ python3 skills/git-pr-workflow/scripts/workflow.py prepare \
 prepare の preview JSON から `snapshot.head` と `snapshot.state` を取得して apply する。
 
 ```sh
-python3 skills/git-pr-workflow/scripts/workflow.py prepare \
+python3 skills/git-workflow/scripts/workflow.py prepare \
   --repo /path/to/checkout --github-repo example-org/example-repo \
   --base master --branch codex/example --worktree /path/to/worktree \
   --apply --expected-head SHA --expected-state STATE
 ```
 
-CLIはPython 3.10以降、Git、認証済みのghを必要とする。例のスクリプト位置は配布元から実行する場合で、インストール後は読み込んだスキルのディレクトリから解決する。`inspect` もGitHub認証とリモートの対応を確認する。fetch/push先は同じ指定GitHubリポジトリに限り、fork PRは扱わない。
+CLIはPython 3.10以降とGitを必要とする。GitHub 操作には認証済みの gh も必要である。例のスクリプト位置は配布元から実行する場合で、インストール後は読み込んだスキルのディレクトリから解決する。`--github-repo` を指定した `inspect` は GitHub認証とリモートの対応を確認する。fetch/push先は同じ指定GitHubリポジトリに限り、fork PRは扱わない。
 
 ## GitHub 認証確認の実行経路
 
@@ -59,7 +63,7 @@ SSH pushの事前確認は、実際にpushするローカル実行経路で`ssh-
 対象パス、コミットメッセージ、PR title、body file を明示する。既存 PR は `--pr` がなくても matching PR を自動検出する。preview の `body_sha256` を apply に渡す。
 
 ```sh
-python3 skills/git-pr-workflow/scripts/workflow.py publish \
+python3 skills/git-workflow/scripts/workflow.py publish \
   --repo /path/to/checkout --github-repo example-org/example-repo \
   --base master --branch codex/example --expected-head SHA \
   --expected-state STATE --path src/example.py --message '例を更新' \
@@ -83,7 +87,7 @@ CLIはCIを取得・待機・判定しないため、必要なら対象headのGi
 ## feedback
 
 ```sh
-python3 skills/git-pr-workflow/scripts/workflow.py feedback \
+python3 skills/git-workflow/scripts/workflow.py feedback \
   --repo /path/to/checkout --github-repo example-org/example-repo \
   --base master --branch codex/example --pr 42 \
   --mapping /path/to/mapping.json
@@ -98,7 +102,7 @@ mapping はコメントキーを辞書キーにし、値は `request`、`respons
 ## cleanup
 
 ```sh
-python3 skills/git-pr-workflow/scripts/workflow.py cleanup \
+python3 skills/git-workflow/scripts/workflow.py cleanup \
   --repo /path/to/checkout --github-repo example-org/example-repo \
   --base master --branch codex/example --worktree /path/to/worktree \
   --pr 42 --inactive --expected-head SHA --expected-state STATE
@@ -121,7 +125,7 @@ merge やコメント返信は CLI の操作ではない。ユーザーが明示
 
 マージ直前に対象PRの最新headとチェック・レビュー状況を再確認し、`gh pr merge --match-head-commit SHA` とリポジトリで採用されたマージ方式を使う。結果不明ならPR状態を読み直す。通常コメントは `gh pr comment --body-file`、インライン返信は対象コメントIDのreply APIを使う。送信先と本文を確定し、結果不明時は同じ返信の存在を確認してから次を判断する。
 
-検証は配布元で `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s skills/git-pr-workflow/tests -v` を実行する。ローカルの合成Gitリポジトリと模擬gh応答を使い、実GitHubへの更新は行わない。
+検証は配布元で `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s skills/git-workflow/tests -v` を実行する。ローカルの合成Gitリポジトリと模擬gh応答を使い、実GitHubへの更新は行わない。
 
 ## check_docs.py の限界
 

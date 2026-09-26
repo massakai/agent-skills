@@ -700,7 +700,8 @@ class Workflow:
         """
         if self.git("rev-parse", "--show-toplevel").stdout.strip() != str(self.root):
             raise Stop("--repo must be the checkout root")
-        self.authenticate()
+        if self.a.github_repo:
+            self.authenticate()
         if self.a.command == "inspect":
             self.snapshot()
             self.data["worktrees"] = self.git("worktree", "list", "--porcelain").stdout
@@ -718,7 +719,7 @@ def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("command", choices=["inspect", "prepare", "publish", "feedback", "cleanup"])
     p.add_argument("--repo", required=True)
-    p.add_argument("--github-repo", required=True, help="OWNER/REPO; must match fetch and push remote")
+    p.add_argument("--github-repo", help="OWNER/REPO; required except for Git-only inspect")
     p.add_argument("--remote", default="origin")
     p.add_argument("--base")
     p.add_argument("--branch")
@@ -755,7 +756,7 @@ def main(argv=None):
     """
     p = parser()
     a = p.parse_args(argv)
-    if not re.fullmatch(r"[\w.-]+/[\w.-]+", a.github_repo):
+    if a.github_repo and not re.fullmatch(r"[\w.-]+/[\w.-]+", a.github_repo):
         p.error("--github-repo must be OWNER/REPO")
     for name in ("remote", "base", "branch"):
         value = getattr(a, name)
@@ -765,6 +766,8 @@ def main(argv=None):
                 "publish": ["base", "branch", "title", "body_file"],
                 "feedback": ["base", "branch", "pr"],
                 "cleanup": ["base", "branch", "worktree", "pr"]}.get(a.command, [])
+    if a.command != "inspect":
+        required.append("github_repo")
     if any(not getattr(a, name) for name in required):
         p.error("missing required options: " + ", ".join(required))
     if a.apply and a.command in ("inspect", "feedback"):
