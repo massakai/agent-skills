@@ -50,6 +50,7 @@ merge、rebase、cherry-pick の競合は `git-conflict-resolution` を使い、
 preview と expected state、退避内容の確認後だけ `git worktree remove` と `git branch -d` を使う。強制削除しない。
 
 `--discard-generated-caches` の明示があっても、許可済みの再生成キャッシュ以外を削除しない。
+symlink ではない任意の階層の `__pycache__/` は、明示された場合だけ許可済みキャッシュとして扱える。
 
 ## GitHub
 

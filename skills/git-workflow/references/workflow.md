@@ -195,6 +195,8 @@ cleanup は状態を JSON で返し、分類レポートを生成しない。
 - `.coverage`
 - `coverage.xml`
 
+symlink ではない任意の階層の `__pycache__/` ディレクトリも、許可済みキャッシュとして削除できる。
+
 それ以外の ignored ファイル、symlink、未追跡ファイルは停止する。
 `uv.lock` は追跡対象である。
 `data/`・`logs/`・`artifacts/` は保全確認が必要なため削除しない。
