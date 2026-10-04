@@ -16,8 +16,14 @@ PR、commit、worktree の削除判断、GitHub Issue/Project の更新は扱わ
 2. ユーザーが特定の ref を指定しない限り、最新化した default branch から作成する。
 3. base checkout と対象 worktree の状態、既存 branch、既存 worktree を確認する。
    既存の変更・未追跡ファイル・使用中の worktree を新しい作業に流用しない。
-4. GitHub SSH remote から fetch する場合は、実行する同じローカル経路で鍵を確認する。
-   隔離経路の失敗を鍵未登録と断定しない。
+
+### SSH fetch
+
+GitHub SSH remote から fetch する場合は、実行する同じ通常ローカル経路で `ssh-add -T <公開鍵>` を優先して確認する。
+利用できない場合は `ssh-add -l` で読み込み済みの鍵を確認する。
+
+隔離経路の失敗を鍵未登録と断定せず、秘密鍵から passphrase を外す提案をしない。
+`Permission denied (publickey)` の後は、agent や資格情報ストアの状態が変わるまで fetch を再試行しない。
 
 ## 作成と確認
 

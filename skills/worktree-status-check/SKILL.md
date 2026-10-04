@@ -133,7 +133,8 @@ gh pr list --head <branch> --state all --json number,state,title,headRefName,hea
 
 action の表現例:
 
-- `safe_to_remove`: `git worktree remove` で削除し、必要なら `git worktree prune` を行う
+- `safe_to_remove`: cleanup の承認後に `git worktree remove` で削除する。
+  必要なら `git worktree prune` を行い、不要な branch は worktree 削除後に非強制で整理する
 - `removal_candidate_with_leftovers`: 残りを確認し、commit・stash・破棄のいずれかを決めてから削除する
 - `in_progress`: そのまま保持する
 

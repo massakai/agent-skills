@@ -46,8 +46,14 @@ merge、rebase、cherry-pick の競合は `git-conflict-resolution` を使い、
 ### Cleanup
 
 `worktree-status-check` で未追跡・ignored を含む残りを確認し、保全対象として扱う。
+対象 worktree の `git status` が clean であることを確認する。
 
-preview と expected state、退避内容の確認後だけ `git worktree remove` と `git branch -d` を使う。強制削除しない。
+変更が残る場合は commit・stash・破棄のどれにするかを明示して判断し、未追跡・ignored ファイルも保全する。
+
+preview、expected state、退避内容を確認してから `git worktree remove` を使う。
+branch は worktree の削除後に `git branch -d` で整理する。
+削除後は必要に応じて `git worktree prune` を行う。
+強制削除や worktree ディレクトリの直接削除はしない。
 
 `--discard-generated-caches` の明示があっても、許可済みの再生成キャッシュ以外を削除しない。
 symlink ではない任意の階層の `__pycache__/` は、明示された場合だけ許可済みキャッシュとして扱える。
@@ -65,6 +71,7 @@ symlink ではない任意の階層の `__pycache__/` は、明示された場�
 ### 読み取りと認証
 
 `gh` による repo、Issue、PR、review、CI、remote 照合は GitHub 操作である。
+GitHub の確認・操作では、ブラウザーでの手作業に進む前に `gh` で扱えるかを確認する。
 
 最初に、以後の GitHub 操作にも使う通常のローカル実行経路で `gh auth status` を実行する。
 その経路は、OS の資格情報ストア（例: Keychain/keyring）へ到達できなければならない。
@@ -85,9 +92,13 @@ PR、review、CI、merge は `github-pr-workflow` を使う。
 
 ### SSH
 
-fetch/push 前に、同じ通常ローカル経路で `ssh-add -T <公開鍵>` を確認する。
+SSH 秘密鍵から passphrase を外す提案をしない。
+fetch/push 前に、同じ通常ローカル経路で `ssh-add -T <公開鍵>` を優先して確認する。
+利用できない場合は `ssh-add -l` で読み込み済みの鍵を確認する。
 
 隔離経路の `SSH_AUTH_SOCK` 欠落を鍵未登録と判定せず、その経路では push/fetch しない。
+鍵が agent で利用できない場合や passphrase を入力できない場合は、その状態を説明して停止する。
+`Permission denied (publickey)` の後は、agent や資格情報ストアの状態が変わるまで SSH 操作を再試行しない。
 
 ## 段階的ワークフロー
 
