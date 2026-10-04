@@ -28,7 +28,7 @@ publish はさらに `--expected-body` を必須とする。
 基準値が変わったら preview を取り直し、同じ操作を推測で再試行しない。
 
 `inspect` は `--github-repo` なしで Git-only の snapshot と worktree を観測できる。
-この場合は `gh` を実行せず、GitHub 認証も不要である。
+この場合は `gh` を実行せず、GitHub 認証も不要である。PR 情報は返さない。
 
 `--github-repo` を指定した `inspect` と、`prepare`、`publish`、`feedback`、`cleanup` は GitHub 操作である。
 認証と repo/remote 照合を行う。

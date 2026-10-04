@@ -120,7 +120,7 @@ fetch/push 前に、同じ通常ローカル経路で `ssh-add -T <公開鍵>` �
 ## CLI 操作の境界
 
 - `inspect` は `--github-repo` なしでは Git-only の snapshot/worktree 観測を行う。
-  指定時だけ GitHub 認証と repo/remote 照合を追加する。
+  指定時だけ GitHub 認証と repo/remote 照合を追加する。PR 情報は返さない。
 - `prepare`、`publish`、`feedback`、`cleanup` は GitHub 対象を必要とする。
   `publish` はテスト実行、CI 待機・判定、本文の意味評価を代行しない。
 - `feedback` は読み取り専用で構造化記録を作る。
