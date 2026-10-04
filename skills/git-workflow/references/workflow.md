@@ -94,7 +94,7 @@ SSH push の事前確認は、実際に push するローカル実行経路で `
 隔離ランナーは `SSH_AUTH_SOCK` を継承しないことがある。
 その結果だけで鍵が未登録とは判断せず、隔離経路では push を実行しない。
 
-`--apply` は共通 Git ディレクトリに排他ロックを作る。
+`--apply` は共通 Git ディレクトリに `skill-workflow.lock` を作る。
 同じくロック作成権限がある経路を使う。
 
 プロジェクトが uv で依存を管理する場合、pytest を import する unittest は素の `python3` ではなく、次のように実行する。
@@ -213,10 +213,10 @@ squash merge などで `branch -d` が失敗した場合は、worktree 削除済
 
 削除済み worktree からの再開では、`snapshot.state` が `worktree-removed` になる。
 
-書込み中は、共通 Git ディレクトリの排他ファイルで同 CLI の二重実行を防ぐ。
+書込み中は、共通 Git ディレクトリの `skill-workflow.lock` で同 CLI の二重実行を防ぐ。
 通常の Git やエディタをロックするものではないため、親は他の担当も停止・完了させる。
 
-異常終了で排他ファイルが残った場合は、実行担当が終了したことを確認してから回復する。
+異常終了で `skill-workflow.lock` が残った場合は、実行担当が終了したことを確認してから回復する。
 `completed` と `remaining` は、その実行の結果である。
 
 次の実行では、ローカル・リモートの事実を再確認する。

@@ -125,5 +125,5 @@ fetch/push 前に、同じ通常ローカル経路で `ssh-add -T <公開鍵>` �
   `publish` はテスト実行、CI 待機・判定、本文の意味評価を代行しない。
 - `feedback` は読み取り専用で構造化記録を作る。
   コメント送信、merge、thread resolve は行わない。
-- `--apply` は共通 Git ディレクトリに排他ロックを作る。
+- `--apply` は共通 Git ディレクトリに `skill-workflow.lock` を作る。
   更新は、そのディレクトリへ書き込める通常ローカル経路で行う。
