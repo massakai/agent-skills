@@ -113,6 +113,34 @@ class WorkflowTestCase(unittest.TestCase):
         self.assertEqual(w.data["worktree"], str(target.resolve()))
         self.assertEqual(w.remaining, ["fetch_base", "fast_forward_base", "create_worktree", "verify_worktree"])
 
+    def test_git_only_inspect_skips_github_authentication(self):
+        """Git-only inspectではGitHub認証を呼ばず状態を観測する。"""
+        class AuthenticationProbe(FakeWorkflow):
+            """認証呼出しだけを記録するGit-only観測用実装。"""
+
+            def authenticate(self):
+                """GitHub認証の呼出しを記録する。"""
+                self.auth_calls = getattr(self, "auth_calls", 0) + 1
+
+        w = AuthenticationProbe(self.args("inspect", github_repo=None))
+        w.execute()
+        self.assertEqual(0, getattr(w, "auth_calls", 0))
+        self.assertIn("snapshot", w.data)
+        self.assertIn("worktrees", w.data)
+
+    def test_github_inspect_authenticates_when_repository_is_specified(self):
+        """GitHub対象を指定したinspectでは認証を実行する。"""
+        class AuthenticationProbe(FakeWorkflow):
+            """認証呼出しだけを記録するGitHub観測用実装。"""
+
+            def authenticate(self):
+                """GitHub認証の呼出しを記録する。"""
+                self.auth_calls = getattr(self, "auth_calls", 0) + 1
+
+        w = AuthenticationProbe(self.args("inspect"))
+        w.execute()
+        self.assertEqual(1, w.auth_calls)
+
     def test_prepare_apply_rejects_stale_preview_state(self):
         """preview後に状態が変わったapplyを拒否することを確認する。"""
         preview = FakeWorkflow(self.args("prepare"))
@@ -479,6 +507,11 @@ class WorkflowTestCase(unittest.TestCase):
         parsed = p.parse_args(["publish", "--repo", "r", "--github-repo", "x/y", "--base", "master",
                                "--branch", "topic", "--title", "t", "--body-file", "b"])
         self.assertEqual(parsed.command, "publish")
+        inspect = p.parse_args(["inspect", "--repo", "r"])
+        self.assertIsNone(inspect.github_repo)
+        with self.assertRaises(SystemExit):
+            workflow.main(["prepare", "--repo", "r", "--base", "master",
+                           "--branch", "topic", "--worktree", "w"])
         with self.assertRaises(SystemExit):
             workflow.main(["feedback", "--repo", "r", "--github-repo", "x/y", "--base", "master",
                            "--branch", "topic", "--pr", "1", "--apply"])

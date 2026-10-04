@@ -21,6 +21,8 @@ Codex 全般の個人設定、認証情報、キャッシュ、ローカル環�
 
 ## 構成
 
+以下は代表的な構成です。ほかの共有スキルも `skills/` 配下に配置します。
+
 ```text
 .
 ├── README.md
@@ -29,14 +31,20 @@ Codex 全般の個人設定、認証情報、キャッシュ、ローカル環�
     ├── README.md
     ├── _template/
     │   └── SKILL.md
+    ├── git-workflow/
+    │   ├── SKILL.md
+    │   ├── references/
+    │   ├── scripts/
+    │   └── tests/
     ├── mermaid-validate-and-render/
     │   ├── SKILL.md
     │   ├── agents/
     │   ├── examples/
     │   ├── references/
     │   └── scripts/
-    └── repo-orientation/
-        └── SKILL.md
+    ├── repo-orientation/
+    │   └── SKILL.md
+    └── ...
 ```
 
 ## スキルの考え方

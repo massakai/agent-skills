@@ -5,19 +5,30 @@ description: "gh と Git の状態を使って local の git worktree を確認�
 
 # Worktree 状態確認
 
-この skill は、ローカルの `git worktree` の状態を確認し、各 worktree が削除可能かどうかを判定したり、掃除候補のレポートを作ったりするときに使う。破壊的な cleanup や automation を行う前に、まずこの skill を使う。
+この skill は、ローカルの `git worktree` の状態を確認するときに使う。
 
-cleanupの前に対象が使われていないことを確認し、PRのbase/headとマージ後の追加コミットを照合する。ignoredファイルも残りとして扱い、保全先の内容を確認して対象から退避されるまで削除可能とは分類しない。
+各 worktree が削除可能かどうかを判定し、掃除候補のレポートを作る。
+破壊的な cleanup や automation を行う前に、まずこの skill を使う。
+
+cleanup の前に、対象が使われていないことを確認する。
+PR の base/head とマージ後の追加コミットを照合する。
+
+ignored ファイルも残りとして扱う。
+保全先の内容を確認して対象から退避されるまで、削除可能とは分類しない。
 
 ## 対象範囲
 
-このskillの役割は分類と報告である。削除操作は後片付けの依頼範囲を確認して別手順で行う。会話中の既存の依頼は引き継ぎ、分類だけの依頼から削除へ進まない。
+この skill の役割は分類と報告である。
+
+削除操作は、後片付けの依頼範囲を確認して別手順で行う。
+会話中の既存の依頼は引き継ぐが、分類だけの依頼から削除へ進まない。
 
 このリポジトリでは GitHub と `gh` を前提にする。
 
 ## 事前確認
 
-1. `gh auth status` で GitHub CLI の認証状態を確認する。
+1. PR 状態を確認する場合は、資格情報ストアへ到達できる通常のローカル実行経路で `gh auth status` を確認する。
+   sandbox・隔離経路の失敗は認証失効と扱わない。
 2. `git worktree list --porcelain` で worktree を列挙する。
 3. 各 worktree はその worktree 自身のパスで確認する。
 4. 安全性の判定には未追跡・Git除外ファイルも含める。
@@ -98,7 +109,7 @@ worktree 自体は完了済みまたは放置気味に見えるが、ローカ�
 使いやすいコマンド例:
 
 ```sh
-gh auth status
+gh auth status # 資格情報ストアへ到達できる通常ローカル実行経路で実行する
 git worktree list --porcelain
 git -C <path> status --short --untracked-files=all --ignored
 git -C <path> status -sb
@@ -122,13 +133,17 @@ gh pr list --head <branch> --state all --json number,state,title,headRefName,hea
 
 action の表現例:
 
-- `safe_to_remove`: `git worktree remove` で削除し、必要なら `git worktree prune` を行う
+- `safe_to_remove`: cleanup の承認後に `git worktree remove` で削除する。
+  必要なら `git worktree prune` を行い、不要な branch は worktree 削除後に非強制で整理する
 - `removal_candidate_with_leftovers`: 残りを確認し、commit・stash・破棄のいずれかを決めてから削除する
 - `in_progress`: そのまま保持する
 
 ## 安全ルール
 
 - cleanup の主手段として `rm -rf` を勧めない。
-- 未追跡・Git除外ファイルを削除可否の判定に含める。更新日時が古いだけでは破棄可能と判断しない。
-- `gh auth status` が失敗した場合は、PR ベースの判定が不完全であることを明記し、ローカル情報だけで補助判定する。
+- 未追跡・Git除外ファイルを削除可否の判定に含める。
+  更新日時が古いだけでは破棄可能と判断しない。
+- 通常ローカル経路で `gh auth status` を確認できない場合は、認証状態と PR 情報を未確定として明記する。
+  ローカル情報だけで安全側に補助判定する。
+  sandbox・隔離経路の失敗だけから認証切れと案内しない。
 - PR の状態とローカルの activity が矛盾する場合は、より安全側の分類を採用し、その理由も書く。
