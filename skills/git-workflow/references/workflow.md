@@ -18,6 +18,9 @@ publish では `body_sha256` もコピーする。
 
 例では `/path/to/checkout` と `example-org/example-repo` を使う。
 
+対象 checkout は `--repo PATH` で明示する。
+GitHub 操作では `--github-repo OWNER/REPO` と `--remote NAME` も明示する。既定 remote は `origin` である。
+
 更新操作は `--base`、`--branch`、`--expected-head`、`--expected-state` を必須とする。
 publish はさらに `--expected-body` を必須とする。
 
