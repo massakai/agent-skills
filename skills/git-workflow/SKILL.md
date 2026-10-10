@@ -104,6 +104,7 @@ fetch/push 前に、同じ通常ローカル経路で `ssh-add -T <公開鍵>` �
 
 1. **Plan**
    対象リポジトリ、変更範囲、既存規約、default branch、完了条件、ローカル検証を確認する。
+   既存の Sub-Issue に着手する場合も、実装・テスト・fixture・文書を含む PR 規模と責務を再見積もりし、必要な分割再編を実装・PR 作成前に判断する。
    Issue の作業分解は `github-issue-planning`、Project の計画同期は `github-project-management` を使う。
    GitHub 情報を読む場合だけ通常経路で認証確認する。
 2. **Prepare**
