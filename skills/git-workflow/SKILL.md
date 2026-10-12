@@ -114,11 +114,13 @@ fetch/push 前に、同じ通常ローカル経路で `ssh-add -T <公開鍵>` �
    明示されたファイルだけを変更する。
    競合時は `git-conflict-resolution`、commit 時は `git-commit` を適用して、リポジトリ規約に沿ってローカル検証する。
    ローカル検証、PR 公開、CI は別の事実として記録する。
+   長時間テストは、導入済みなら `long-running-command` を使い、一度起動した処理の終了を待つ。
 4. **Publish PR**
    `github-pr-workflow` を使い、明示承認後に SSH 鍵を確認して、PR 作成または更新を実施する。
    結果不明時は再送せず、remote と PR を読み戻す。
 5. **Review and CI**
    `github-pr-workflow` で PR、review、CI を確認する。
+   長時間のCI監視は、導入済みなら `long-running-command` を使い、中間ログを保存して終了後に最新 head を照合する。
    `QUEUED` または `IN_PROGRESS` は `pending` と報告する。
    外部コメントへの返信は明示承認後のみ行う。
 6. **Merge**
