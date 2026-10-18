@@ -3,9 +3,11 @@
 import importlib.util
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 spec = importlib.util.spec_from_file_location(
     "workflow_snapshot", Path(__file__).resolve().parents[1] / "scripts/workflow.py"
 )

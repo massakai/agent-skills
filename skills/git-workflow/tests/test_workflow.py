@@ -4,19 +4,18 @@
 """
 
 import argparse
-import importlib.util
 import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "workflow.py"
-SPEC = importlib.util.spec_from_file_location("workflow", SCRIPT)
-workflow = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(workflow)
+sys.path.insert(0, str(SCRIPT.parent))
+import workflow
 
 
 def git(cwd, *args, check=True):
@@ -82,7 +81,7 @@ class WorkflowTestCase(unittest.TestCase):
                     pr=None, path=[], message="テストの変更", title="Synthetic workflow test",
                     body_file=str(self.body_file), label=["codex"], ssh_public_key=None,
                     mapping=None, inactive=False, discard_generated_caches=False, apply=False, expected_head=None,
-                    expected_state=None, expected_body=None)
+                    expected_state=None, expected_body=None, expected_publication=None, plan=None)
         data.update(overrides)
         return argparse.Namespace(**data)
 
@@ -185,6 +184,9 @@ class WorkflowTestCase(unittest.TestCase):
         snap = pre.snapshot()
         args.expected_head, args.expected_state = snap["head"], snap["state"]
         args.expected_body = __import__("hashlib").sha256(self.body_file.read_bytes()).hexdigest()
+        pre.authenticate()
+        args.expected_publication = workflow.publish_plan.canonical_digest(
+            {**pre.publication_intent(args.path, self.body_file.read_text(), None), "plan_digest": None})
         # 最初の照会は空で、push後の再照会がpush済みSHAのPRを見つける。
         class Readback(FakeWorkflow):
             """push後のPR再照会を段階的に返す検証用実装。"""
@@ -249,6 +251,10 @@ class WorkflowTestCase(unittest.TestCase):
         snap = FakeWorkflow(args).snapshot()
         args.expected_head, args.expected_state = snap["head"], snap["state"]
         args.expected_body = __import__("hashlib").sha256(self.body_file.read_bytes()).hexdigest()
+        preview = FakeWorkflow(args)
+        preview.authenticate()
+        args.expected_publication = workflow.publish_plan.canonical_digest(
+            {**preview.publication_intent(args.path, self.body_file.read_text(), None), "plan_digest": None})
         # gh createが失敗しても、push後の照会がPRを返す状態を再現する。
         pushed_head = None
         calls = 0
@@ -292,6 +298,10 @@ class WorkflowTestCase(unittest.TestCase):
         args.expected_body = __import__("hashlib").sha256(self.body_file.read_bytes()).hexdigest()
         before = git(self.root, "rev-list", "--count", "HEAD").stdout
         pr = self.open_pr()
+        preview = FakeWorkflow(args)
+        preview.authenticate()
+        args.expected_publication = workflow.publish_plan.canonical_digest(
+            {**preview.publication_intent(args.path, self.body_file.read_text(), pr), "plan_digest": None})
         replies = {"pr list --repo": [json.dumps([{"number": 7}]), json.dumps([{"number": 7}]), json.dumps([{"number": 7}])],
                    "pr view 7": json.dumps(pr), "pr edit 7": (0, "edited")}
         self.run_execute(args, replies)
@@ -553,6 +563,10 @@ class WorkflowTestCase(unittest.TestCase):
         snap = FakeWorkflow(args).snapshot()
         args.expected_head, args.expected_state = snap["head"], snap["state"]
         args.expected_body = __import__("hashlib").sha256(self.body_file.read_bytes()).hexdigest()
+        preview = FakeWorkflow(args)
+        preview.authenticate()
+        args.expected_publication = workflow.publish_plan.canonical_digest(
+            {**preview.publication_intent(args.path, self.body_file.read_text(), None), "plan_digest": None})
         class MutatingLookup(FakeWorkflow):
             """PR照合中にローカル状態を変更する競合再現用実装。"""
 

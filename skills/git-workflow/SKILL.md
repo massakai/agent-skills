@@ -36,6 +36,8 @@ GitHub の repo、Issue、PR、review、CI を `gh` で読み書きするとき�
 更新系 CLI は preview を既定とする。`snapshot.head` と `snapshot.state` を、apply の `--expected-head` と `--expected-state` に引き継ぐ。
 
 publish では `body_sha256` も `--expected-body` に引き継ぐ。
+`publication_sha256` は `--expected-publication` に引き継ぎ、宛先・未送信commit・タイトル・ラベルを固定する。
+依頼範囲と検証対象をplanで照合する場合は、[PR公開前の照合](references/publication-preflight.md)に従う。
 
 ### 競合
 

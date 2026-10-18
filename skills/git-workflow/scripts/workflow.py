@@ -16,6 +16,8 @@ import subprocess
 import sys
 from urllib.parse import urlparse
 
+import publish_plan
+
 
 class Stop(RuntimeError):
     """前提不成立や結果不明により、安全に継続できない状態。"""
@@ -498,6 +500,113 @@ class Workflow:
         self.git("fetch", self.a.remote, f"refs/heads/{self.a.branch}:refs/remotes/{self.a.remote}/{self.a.branch}")
         self.git("branch", f"--set-upstream-to={self.a.remote}/{self.a.branch}", self.a.branch)
 
+    def publication_intent(self, paths, body, existing):
+        """送信先・未送信commit・PR内容の照合対象を読み取り専用で返す。
+
+        Args:
+            paths: 今回stageする明示的な相対ファイルパス。
+            body: 改行を保持したPR本文。
+            existing: 対応する既存PRの辞書。未作成ならNone。
+
+        Returns:
+            比較用の送信計画。remote URLは内容hashだけを保持する。
+
+        Raises:
+            Stop: リモート先端を一意に取得できないか、未送信範囲が確定できない場合。
+        """
+        needs_commit = bool(paths and self.git("--literal-pathspecs", "status", "--porcelain=v1", "-z",
+                                              "--untracked-files=all", "--", *paths).stdout)
+        if needs_commit and (not self.a.message or not self.a.message.strip()):
+            raise Stop("COMMIT_MESSAGE_REQUIRED: specify the message before preview")
+        endpoints = {}
+        for key, extra in (("fetch", []), ("push", ["--push"])):
+            urls = self.git("remote", "get-url", *extra, "--all", self.a.remote).stdout.splitlines()
+            if len(urls) != 1:
+                raise Stop("REMOTE_AMBIGUOUS: expected one fetch and one push URL")
+            endpoints[key] = hashlib.sha256(urls[0].encode()).hexdigest()
+        remote_head = self.remote_head()
+        baseline = remote_head
+        if baseline is None:
+            lines = self.git("ls-remote", "--heads", self.a.remote, f"refs/heads/{self.a.base}").stdout.splitlines()
+            if len(lines) != 1:
+                raise Stop("BASE_UNAVAILABLE: remote base must exist exactly once")
+            baseline = lines[0].split()[0]
+        if self.git("cat-file", "-e", f"{baseline}^{{commit}}", check=False).returncode:
+            raise Stop("REMOTE_OBJECT_UNAVAILABLE: fetch the selected ref before preview")
+        if self.git("merge-base", "--is-ancestor", baseline, "HEAD", check=False).returncode:
+            raise Stop("REMOTE_DIVERGED: remote baseline is not an ancestor of HEAD")
+        commits = []
+        for oid in self.git("rev-list", "--reverse", f"{baseline}..HEAD").stdout.splitlines():
+            names = self.git("diff-tree", "--root", "-m", "-r", "--no-commit-id", "--no-renames",
+                             "--name-only", "-z", oid).stdout.split("\0")
+            changed = sorted(set(names) - {""})
+            if set(changed) - set(paths):
+                raise Stop("OUT_OF_SCOPE_COMMIT: an outgoing commit changes paths outside the plan")
+            commits.append({"oid": oid, "paths": changed})
+        return {"destination": self.github, "remote": self.a.remote, "endpoints": endpoints,
+                "base": self.a.base, "branch": self.a.branch, "remote_head": remote_head,
+                "baseline": baseline, "commits": commits, "paths": sorted(paths),
+                "requires_commit": needs_commit,
+                "title": self.a.title, "labels": sorted(set(self.a.label)),
+                "message": self.a.message, "body_sha256": hashlib.sha256(body.encode()).hexdigest(),
+                "pr": existing["number"] if existing else None}
+
+    def guard_publication_identity(self, intent):
+        """commit後も本文・plan・remoteが確認済み内容と同じか検査する。
+
+        Args:
+            intent: stage前に照合した送信予定。
+
+        Raises:
+            Stop: 本文、plan、remote URLのいずれかが変わった場合。
+            ValueError: 変更されたplanが不正な場合。
+        """
+        for key, extra in (("fetch", []), ("push", ["--push"])):
+            urls = self.git("remote", "get-url", *extra, "--all", self.a.remote).stdout.splitlines()
+            if len(urls) != 1 or hashlib.sha256(urls[0].encode()).hexdigest() != intent["endpoints"][key]:
+                raise Stop("PUBLICATION_CHANGED: remote URL changed before external update")
+        if hashlib.sha256(self.body().encode()).hexdigest() != intent["body_sha256"]:
+            raise Stop("PUBLICATION_CHANGED: body changed before external update")
+        filename = getattr(self.a, "plan", None)
+        digest = publish_plan.canonical_digest(publish_plan.load_plan(filename)) if filename else None
+        if digest != intent["plan_digest"]:
+            raise Stop("PUBLICATION_CHANGED: plan changed before external update")
+
+    def check_publication_plan(self, snap, paths, body):
+        """ローカルplanを実際の引数・検証対象・本文と照合する。
+
+        Returns:
+            指定planの内容digest。planを使わない既存呼び出しではNone。
+
+        Raises:
+            ValueError: planのschemaが不正な場合。
+            Stop: planが未確定、または実際の公開対象と一致しない場合。
+        """
+        filename = getattr(self.a, "plan", None)
+        if not filename:
+            return None
+        plan = publish_plan.load_plan(filename)
+        destination = plan["destination"]
+        actual = {"host": urlparse(self.github).hostname,
+                  "repository": urlparse(self.github).path.strip("/"),
+                  "remote": self.a.remote, "base": self.a.base, "branch": self.a.branch}
+        if destination != actual or plan["title"] != self.a.title or set(plan["labels"]) != set(self.a.label):
+            raise Stop("PLAN_MISMATCH: destination, title or labels differ")
+        if set(plan["paths"]) != set(paths):
+            raise Stop("PLAN_MISMATCH: selected paths differ")
+        if plan["request"]["state"] != "confirmed" or plan["validation"]["state"] == "unresolved":
+            raise Stop("PLAN_UNRESOLVED: parent confirmation or validation is missing")
+        validation = plan["validation"]
+        if validation["head"] != snap["head"] or validation["snapshot_state"] != snap["state"]:
+            raise Stop("VALIDATION_STALE: evidence does not match the current HEAD and state")
+        requirements = plan["body_requirements"]
+        if not body.startswith(requirements["marker"]) or any(h not in body.splitlines() for h in requirements["headings"]):
+            raise Stop("BODY_REQUIREMENT_MISSING: required marker or heading is missing")
+        if not set(requirements["labels"]) <= set(self.a.label):
+            raise Stop("LABEL_REQUIREMENT_MISSING: required labels are missing")
+        # 確認申告は権限を付与しない。planの変更検出だけに使用する。
+        return publish_plan.canonical_digest(plan)
+
     def publish(self, apply):
         """対象ファイルのcommit・pushとPR作成または更新を準備・実行する。
 
@@ -518,10 +627,22 @@ class Workflow:
         existing = self.matching_pr()
         self.data["pr"] = existing["number"] if existing else None
         self.data["paths"] = paths
+        intent = self.publication_intent(paths, body, existing)
+        intent["plan_digest"] = self.check_publication_plan(snap, paths, body)
+        self.data["publication"] = intent
+        self.data["publication_sha256"] = publish_plan.canonical_digest(intent)
         if not apply:
             return
+        if getattr(self.a, "expected_publication", None) != self.data["publication_sha256"]:
+            raise Stop("PUBLICATION_CHANGED: review the current destination, commits, title and labels")
         if self.a.expected_body != self.data["body_sha256"]:
             raise Stop("PR body changed/unconfirmed; review its checksum in the preview")
+        self.guard(self.snapshot())
+        # previewの後にremoteや送信予定commitが変わった場合もstage前に止める。
+        current = self.publication_intent(paths, self.body(), existing)
+        current["plan_digest"] = self.check_publication_plan(self.snapshot(), paths, self.body())
+        if publish_plan.canonical_digest(current) != self.data["publication_sha256"]:
+            raise Stop("PUBLICATION_CHANGED: publication changed before staging")
         self.guard(self.snapshot())
         if paths:
             self.git("--literal-pathspecs", "add", "--", *paths)
@@ -536,9 +657,13 @@ class Workflow:
             self.stage("commit", lambda: self.git("commit", "-m", self.a.message))
         else:
             self.stage("commit", lambda: None)
+        self.guard_publication_identity(intent)
+        if self.remote_head() != intent["remote_head"]:
+            raise Stop("PUBLICATION_CHANGED: remote branch changed before push")
         self.push()
         # push中にPRが作成される可能性があるため、重複作成を避けて再照合する。
         existing = self.matching_pr()
+        self.guard_publication_identity(intent)
         if self.body() != body:
             raise Stop("PR body changed during publish; review it before retry")
         args = ["--repo", self.github, "--title", self.a.title, "--body-file", str(Path(self.a.body_file).resolve())]
@@ -738,6 +863,8 @@ def parser():
     p.add_argument("--expected-head")
     p.add_argument("--expected-state")
     p.add_argument("--expected-body")
+    p.add_argument("--plan", help="optional workflow-plan/v1 publication plan")
+    p.add_argument("--expected-publication", help="publication_sha256 from the reviewed preview")
     return p
 
 
