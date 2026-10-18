@@ -2,11 +2,16 @@
 
 CLI は stdout に JSON、stderr に短い実行概要を出す。
 
+定型検査の拡張を設計・実装するときは、[定型作業の検査・引き継ぎ設計](standardization-design.md)を参照する。
+設計の後続段階は、この文書の実装済み手順とは区別する。
+
 結果の `status` は `preview`、`observed`、`applied`、`stopped` のいずれかである。
 `completed`、`remaining`、`error` を確認する。
 
 更新操作の preview 結果に含まれる `snapshot.state` と `head` を apply 呼び出しへコピーする。
 publish では `body_sha256` もコピーする。
+`publication_sha256` もapplyの `--expected-publication` へコピーする。
+公開planを使う追加検査は [PR公開前の照合](publication-preflight.md) を参照する。
 
 `snapshot.status` は除外ディレクトリをまとめ、最大 4000 文字に制限した表示である。
 `status_truncated` が true なら、必要なパスを別途確認する。
@@ -22,7 +27,7 @@ publish では `body_sha256` もコピーする。
 GitHub 操作では `--github-repo OWNER/REPO` と `--remote NAME` も明示する。既定 remote は `origin` である。
 
 更新操作は `--base`、`--branch`、`--expected-head`、`--expected-state` を必須とする。
-publish はさらに `--expected-body` を必須とする。
+publish はさらに `--expected-body` と `--expected-publication` を必須とする。
 
 `--apply` がない限り変更しない。
 基準値が変わったら preview を取り直し、同じ操作を推測で再試行しない。
@@ -131,7 +136,7 @@ python3 skills/git-workflow/scripts/workflow.py publish \
   --base master --branch codex/example --expected-head SHA \
   --expected-state STATE --path src/example.py --message '例を更新' \
   --title 'Example update' --body-file /path/to/body.md \
-  --expected-body BODY_SHA256
+  --expected-body BODY_SHA256 --expected-publication PUBLICATION_SHA256
 ```
 
 これは preview である。
