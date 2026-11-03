@@ -1,0 +1,4 @@
+interface:
+  display_name: "Issue依存関係・進捗グラフ"
+  short_description: "Sub-Issueの依存とProjectの状態をMermaidで可視化する"
+  default_prompt: "Use $github-issue-progress-graph to visualize sub-issue dependencies and progress in an issue body."
